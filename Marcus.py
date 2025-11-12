@@ -9,6 +9,7 @@ res_x = 640
 res_y = 480
 fps = 30
 afvig = 25  # horizontal tolerance in pixels
+max_pair_distance = 1.5  # maximum 3D distance (meters) to consider cones as a pair
 
 lowerYellow = np.array([20, 110, 90])
 upperYellow = np.array([33, 255, 255])
@@ -88,6 +89,31 @@ def deproject_pixel_to_point(u, v, depth):
     return X, Y, Z
 
 
+def calculate_3d_distance(pos1, pos2):
+    """Calculate 3D Euclidean distance between two 3D positions"""
+    return math.sqrt(
+        (pos1[0] - pos2[0])**2 +
+        (pos1[1] - pos2[1])**2 +
+        (pos1[2] - pos2[2])**2
+    )
+
+
+def calculate_midpoint_3d(pos1, pos2):
+    """Calculate 3D midpoint between two positions"""
+    return (
+        (pos1[0] + pos2[0]) / 2,
+        (pos1[1] + pos2[1]) / 2,
+        (pos1[2] + pos2[2]) / 2
+    )
+
+
+def project_point_to_pixel(X, Y, Z):
+    """Convert 3D camera coordinates back to pixel coordinates"""
+    u = int(X * fx / Z + ppx)
+    v = int(Y * fy / Z + ppy)
+    return u, v
+
+
 while True:
     frameset = pipe.wait_for_frames()
     frames = align.process(frameset)
@@ -122,7 +148,8 @@ while True:
     contours_y, _ = cv2.findContours(Masking_Clean_Y, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     contour_centers = []
-    cone_positions = []
+    blue_cones = []
+    yellow_cones = []
 
     # Find contour centers
     for i in range(2):
@@ -150,9 +177,9 @@ while True:
             if len(approx) > 3:
                 cv2.drawContours(color_array, [approx], 0, (255, 0, 0), 5)
 
-    # FIXED PAIRING LOGIC
     # Group nearby contours and pick the topmost one from each group
     used = set()
+    cone_positions = []
 
     for i in range(len(contour_centers)):
         if i in used:
@@ -181,44 +208,141 @@ while True:
             cone_positions.append(contour_centers[i])
             used.add(i)
 
-    # Calculate and display accurate measurements
-    for i in range(len(cone_positions)):
-        u, v, color_label = cone_positions[i]
-
+    # Process each cone and get 3D positions
+    for u, v, color_label in cone_positions:
         # Get robust depth measurement
         depth = get_robust_depth(depth_frame, u, v, window_size=5)
 
         if depth <= 0 or depth > 10:  # Invalid or too far
-            cv2.putText(color_array, f"Invalid depth - {color_label}",
-                        (u - 50, v - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
+            cv2.putText(color_array, f"Invalid - {color_label}",
+                        (u - 40, v - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
             continue
 
         # Deproject to 3D camera coordinates
         X, Y, Z = deproject_pixel_to_point(u, v, depth)
 
-        # Calculate metrics
-        angle_rad = math.atan2(X, Z)  # Horizontal angle from camera optical axis
-        angle_deg = angle_rad * 180 / math.pi  # Convert to degrees
+        # Store cone data: (u, v, X, Y, Z, color)
+        cone_data = {
+            'pixel': (u, v),
+            'position_3d': (X, Y, Z),
+            'color': color_label
+        }
 
-        lateral_offset = abs(X)  # Horizontal distance from center axis (meters)
-        direct_distance = math.sqrt(X * X + Y * Y + Z * Z)  # True 3D distance (meters)
+        if color_label == "Blue":
+            blue_cones.append(cone_data)
+        else:
+            yellow_cones.append(cone_data)
 
         # Draw marker on cone
         cv2.circle(color_array, (u, v), 5, (255, 255, 255), -1)
 
-        # Display measurements
-        text = f"a:{angle_deg:+.1f}deg off:{lateral_offset:.2f}m d:{direct_distance:.2f}m"
-        cv2.putText(color_array, text, (u - 80, v - 15),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, cv2.LINE_AA)
+    # Pair blue and yellow cones based on 3D proximity
+    cone_pairs = []
+    used_blue = set()
+    used_yellow = set()
 
-        # Display color
-        cv2.putText(color_array, color_label, (u - 30, v + 15),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1, cv2.LINE_AA)
+    for y_idx, yellow in enumerate(yellow_cones):
+        if y_idx in used_yellow:
+            continue
+
+        best_match = None
+        min_distance = float('inf')
+
+        # Find closest blue cone
+        for b_idx, blue in enumerate(blue_cones):
+            if b_idx in used_blue:
+                continue
+
+            dist = calculate_3d_distance(yellow['position_3d'], blue['position_3d'])
+
+            if dist < min_distance and dist < max_pair_distance:
+                min_distance = dist
+                best_match = b_idx
+
+        # If we found a match, create a pair
+        if best_match is not None:
+            cone_pairs.append({
+                'blue': blue_cones[best_match],
+                'yellow': yellow,
+                'distance': min_distance
+            })
+            used_blue.add(best_match)
+            used_yellow.add(y_idx)
+
+    # Draw pairs, distances, and midpoints
+    for pair_idx, pair in enumerate(cone_pairs):
+        blue = pair['blue']
+        yellow = pair['yellow']
+        distance = pair['distance']
+
+        blue_pixel = blue['pixel']
+        yellow_pixel = yellow['pixel']
+
+        # Draw line connecting the pair
+        cv2.line(color_array, blue_pixel, yellow_pixel, (255, 0, 255), 2)
+
+        # Calculate and draw midpoint
+        midpoint_3d = calculate_midpoint_3d(blue['position_3d'], yellow['position_3d'])
+        mid_u, mid_v = project_point_to_pixel(*midpoint_3d)
+
+        # Draw midpoint
+        cv2.circle(color_array, (mid_u, mid_v), 7, (0, 255, 255), -1)
+        cv2.circle(color_array, (mid_u, mid_v), 9, (255, 255, 255), 2)
+
+        # Display pair information at midpoint
+        mid_X, mid_Y, mid_Z = midpoint_3d
+        mid_angle = math.atan2(mid_X, mid_Z) * 180 / math.pi
+        mid_distance = math.sqrt(mid_X**2 + mid_Y**2 + mid_Z**2)
+
+        # Text at midpoint
+        text1 = f"Pair {pair_idx + 1}: {distance:.2f}m apart"
+        text2 = f"Mid: {mid_distance:.2f}m, {mid_angle:+.1f}deg"
+
+        cv2.putText(color_array, text1, (mid_u - 80, mid_v - 25),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(color_array, text2, (mid_u - 80, mid_v - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
+
+        # Display info at each cone
+        b_X, b_Y, b_Z = blue['position_3d']
+        b_angle = math.atan2(b_X, b_Z) * 180 / math.pi
+        b_dist = math.sqrt(b_X**2 + b_Y**2 + b_Z**2)
+
+        y_X, y_Y, y_Z = yellow['position_3d']
+        y_angle = math.atan2(y_X, y_Z) * 180 / math.pi
+        y_dist = math.sqrt(y_X**2 + y_Y**2 + y_Z**2)
+
+        cv2.putText(color_array, f"B: {b_dist:.2f}m {b_angle:+.1f}deg",
+                    (blue_pixel[0] - 80, blue_pixel[1] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1, cv2.LINE_AA)
+
+        cv2.putText(color_array, f"Y: {y_dist:.2f}m {y_angle:+.1f}deg",
+                    (yellow_pixel[0] - 80, yellow_pixel[1] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1, cv2.LINE_AA)
+
+    # Display unpaired cones
+    for b_idx, blue in enumerate(blue_cones):
+        if b_idx not in used_blue:
+            u, v = blue['pixel']
+            X, Y, Z = blue['position_3d']
+            angle = math.atan2(X, Z) * 180 / math.pi
+            dist = math.sqrt(X**2 + Y**2 + Z**2)
+            cv2.putText(color_array, f"B(unpaired): {dist:.2f}m {angle:+.1f}deg",
+                        (u - 80, v - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (100, 100, 255), 1)
+
+    for y_idx, yellow in enumerate(yellow_cones):
+        if y_idx not in used_yellow:
+            u, v = yellow['pixel']
+            X, Y, Z = yellow['position_3d']
+            angle = math.atan2(X, Z) * 180 / math.pi
+            dist = math.sqrt(X**2 + Y**2 + Z**2)
+            cv2.putText(color_array, f"Y(unpaired): {dist:.2f}m {angle:+.1f}deg",
+                        (u - 80, v - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (100, 255, 255), 1)
 
     cv.imshow("Detection", color_array)
     cv.imshow("Depth", depth_img)
 
-    if cv.waitKey(1) & 0xFF == ord('q'):
+    if cv.waitKey(200) & 0xFF == ord('q'):
         break
 
 pipe.stop()
