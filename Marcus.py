@@ -3,7 +3,7 @@ import cv2 as cv
 import numpy as np
 import pyrealsense2 as rs
 import math
-#marcus er til mænd
+
 pipe = rs.pipeline()
 cfg = rs.config()
 res_x = 1280
