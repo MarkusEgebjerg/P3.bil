@@ -6,8 +6,8 @@ import math
 
 pipe = rs.pipeline()
 cfg = rs.config()
-res_x = 1280
-res_y = 720
+res_x = 640
+res_y = 480
 fps = 30
 fov_x = 87
 
@@ -132,7 +132,7 @@ while True:
         x_coord = abs(np.sin(Angle) * cone_distance)
 
         #cv2.putText(color_array, f"Angle: ({(round(Angle, 2))}, {(round(cone_distance, 2))}, {(cone_positions[i][2])}", (cone_positions[i][0],cone_positions[i][1]), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
-        cv2.putText(color_array, f" a:({(round(Angle, 2))}, coo:{(round(x_coord, 2))},d: {(round(cone_distance,2))},c: {(cone_positions[i][2])}",(cone_positions[i][0], cone_positions[i][1]), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
+        cv2.putText(color_array, f" a:({(round(Angle*(180/math.pi), 2))}, coo:{(round(x_coord, 2))},d: {(round(cone_distance,2))},c: {(cone_positions[i][2])}",(cone_positions[i][0], cone_positions[i][1]), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
 
 
 
