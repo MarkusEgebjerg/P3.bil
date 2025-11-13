@@ -6,8 +6,8 @@ import math
 
 pipe = rs.pipeline()
 cfg = rs.config()
-res_x = 640
-res_y = 480
+res_x = 1280
+res_y = 720
 fps = 30
 fov_x = 87
 
@@ -140,6 +140,6 @@ while True:
     cv.imshow("depth", depth_img)
     # cv.imshow("clean mask y", Masking_Clean_Y)
     # cv.imshow("clean mask b", Masking_Clean_B)
-    if cv.waitKey(200) & 0xFF == ord('q'):
+    if cv.waitKey(1) & 0xFF == ord('q'):
         break
 pipe.stop()
