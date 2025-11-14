@@ -26,34 +26,40 @@ class RealSenseCam:
 
         self.align = rs.align(rs.stream.color)
 
-        # For downstream math (pixels per degree) – kept for compatibility, but not used for angle now.
+        # Kept for compatibility – not used for angle now
         self.PxD = self.res_x / self.fov_x
 
-        # NEW: fetch intrinsics for accurate angle computation
+        # Intrinsics for accurate angle computation
         color_profile = self.stream.get_stream(rs.stream.color).as_video_stream_profile()
-        self.color_intr = color_profile.get_intrinsics()  # has fx, fy, ppx, ppy, width, height
+        self.color_intr = color_profile.get_intrinsics()  # fx, fy, ppx, ppy
+
+        # --- Depth filters (tuned) ---
+        self.spatial = rs.spatial_filter()
+        self.spatial.set_option(rs.option.filter_magnitude, 5)
+        self.spatial.set_option(rs.option.filter_smooth_alpha, 1)
+        self.spatial.set_option(rs.option.filter_smooth_delta, 50)
+        self.spatial.set_option(rs.option.holes_fill, 3)   # stronger hole filling than 0
+
+        self.temporal = rs.temporal_filter()               # actually used now
+
+        # Optional disparity domain (often improves hole filling):
+        self.to_disp = rs.disparity_transform(True)
+        self.to_depth = rs.disparity_transform(False)
 
     def get_processed_frames(self):
-        """Get aligned frames + apply the same filtering/processing as in the original code."""
+        """Get aligned frames + apply the same filtering/processing as in the original code, but with temporal + hole fill."""
         frameset = self.pipe.wait_for_frames()
         frames = self.align.process(frameset)
 
         depth_frame = frames.get_depth_frame()
         color_frame = frames.get_color_frame()
 
-        # Same filters, same order and options
-        spatial = rs.spatial_filter()
-        temporal = rs.temporal_filter()  # created but not used further (same as original)
+        # Process depth in disparity domain → spatial → temporal → back to depth
+        depth_frame = self.to_disp.process(depth_frame)
+        depth_frame = self.spatial.process(depth_frame)
+        depth_frame = self.temporal.process(depth_frame)
+        depth_frame = self.to_depth.process(depth_frame)
 
-        depth_frame = spatial.process(depth_frame)
-
-        spatial.set_option(rs.option.filter_magnitude, 5)
-        spatial.set_option(rs.option.filter_smooth_alpha, 1)
-        spatial.set_option(rs.option.filter_smooth_delta, 50)
-        depth_frame = spatial.process(depth_frame)
-
-        spatial.set_option(rs.option.holes_fill, 0)
-        depth_frame = spatial.process(depth_frame)
         depth_frame = depth_frame.as_depth_frame()
 
         depth_array = np.asanyarray(depth_frame.get_data())
@@ -72,7 +78,6 @@ class RealSenseCam:
 # -------------------------
 class ConePerception:
     def __init__(self, res_x=1280, fov_x=87, afvig=25):
-        # Thresholds and kernel from original
         self.lowerYellow = np.array([20, 110, 90])
         self.upperYellow = np.array([33, 255, 255])
 
@@ -82,20 +87,15 @@ class ConePerception:
         self.kernel = np.ones((2, 3))
         self.afvig = afvig
 
-        # For angle math (kept for compatibility if needed elsewhere)
         self.PxD = res_x / fov_x
         self.fov_x = fov_x
 
-    # Original masking function preserved
     def Masking(self, mask):
         mask_Open = cv2.erode(mask, self.kernel, iterations=3)
         mask_Close = cv2.dilate(mask_Open, self.kernel, iterations=10)
-        # mask_Open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
-        # mask_Close = cv2.morphologyEx(mask_Close_1, cv2.MORPH_CLOSE, kernel, iterations=2)
         return mask_Close
 
     def process_color(self, color_array):
-        """HSV thresholding, masking and contour extraction (same logic)."""
         frame_HSV = cv2.cvtColor(color_array, cv2.COLOR_BGR2HSV)
         frame_threshold_Y = cv2.inRange(frame_HSV, self.lowerYellow, self.upperYellow)
         frame_threshold_B = cv2.inRange(frame_HSV, self.lowerBlue, self.upperBlue)
@@ -106,7 +106,6 @@ class ConePerception:
         contours_b, _ = cv2.findContours(Masking_Clean_B, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         contours_y, _ = cv2.findContours(Masking_Clean_Y, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        # Build centers and draw approximated contours (as in original)
         contour_centers = []
         for i in range(2):
             list_contours = contours_b if i == 0 else contours_y
@@ -127,7 +126,6 @@ class ConePerception:
                 if len(approx) > 3:
                     cv2.drawContours(color_array, [approx], 0, (255, 0, 0), 5)
 
-        # Original pairing / selection logic for cone_positions
         cone_positions = []
         for i in range(0, len(contour_centers)):
             p = 0
@@ -137,10 +135,8 @@ class ConePerception:
                     and -self.afvig < (contour_centers[i][0] - contour_centers[j][0]) < self.afvig
                     and contour_centers[i][1] < contour_centers[j][1]
                 ):
-                    # øverste contour gemmes i cone_positions
                     cone_positions.append(contour_centers[i])
 
-                # If alone horizontally beyond afvig: mark + keep
                 if (
                     i != j
                     and (-self.afvig > (contour_centers[i][0] - contour_centers[j][0])
@@ -149,7 +145,6 @@ class ConePerception:
                     p = p + 1
                     if p >= len(contour_centers) - 1:
                         cv2.circle(color_array, (contour_centers[i][0], contour_centers[i][1]), 4, (255, 255, 255), -1)
-                        # contour gemmes hvis den står alene
                         cone_positions.append(contour_centers[i])
 
         return color_array, cone_positions
@@ -160,27 +155,65 @@ class ConePerception:
 # -------------------------
 class Visualizer:
     @staticmethod
-    def annotate_cones(color_array, depth_frame, cone_positions, intrinsics):
+    def depth_median_at(depth_frame, x, y, win=5, min_valid=6):
         """
-        Intrinsics-based angle computation:
-          Angle_rad = atan2( (u - ppx)/fx , 1 )
-        Everything else remains the same.
+        Robust depth: median over a window around (x,y) using only positive (valid) depths.
+        Returns NaN if not enough valid samples.
+        """
+        w = depth_frame.get_width()
+        h = depth_frame.get_height()
+        # Clamp window to image
+        half = win // 2
+        x0 = max(0, x - half)
+        x1 = min(w - 1, x + half)
+        y0 = max(0, y - half)
+        y1 = min(h - 1, y + half)
+
+        vals = []
+        for yy in range(y0, y1 + 1):
+            for xx in range(x0, x1 + 1):
+                d = depth_frame.get_distance(xx, yy)
+                if d > 0:  # keep only valid
+                    vals.append(d)
+
+        if len(vals) < min_valid:
+            return float('nan')
+        return float(np.median(vals))
+
+    @staticmethod
+    def annotate_cones(color_array, depth_frame, cone_positions, intrinsics, sample_bias_px=4):
+        """
+        Angle from intrinsics; distance = robust median over NxN window (biased a few pixels downward to avoid edge).
         """
         fx = intrinsics.fx
         ppx = intrinsics.ppx
 
         for i in range(0, len(cone_positions)):
-            u = cone_positions[i][0]  # pixel x
+            u = int(cone_positions[i][0])
+            v = int(cone_positions[i][1])
+
+            # Slightly bias downwards into the cone body for more stable depth (optional but helpful)
+            v_biased = max(0, min(depth_frame.get_height()-1, v + sample_bias_px))
+
+            # Angle from optical axis (radians)
             Angle_rad = math.atan2((u - ppx) / fx, 1.0)
 
-            cv2.circle(color_array, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
-            cone_distance = depth_frame.get_distance(int(cone_positions[i][0]), int(cone_positions[i][1]))
+            # Robust depth (meters)
+            cone_distance = Visualizer.depth_median_at(depth_frame, u, v_biased, win=7, min_valid=8)
+
+            # If not enough valid samples, fall back to single-pixel read
+            if math.isnan(cone_distance) or cone_distance <= 0:
+                cone_distance = depth_frame.get_distance(u, v_biased)
+
+            # Lateral x component relative to camera (m)
             x_coord = abs(math.sin(Angle_rad) * cone_distance)
 
+            # Draw + annotate
+            cv2.circle(color_array, (u, v), 4, (255, 255, 255), -1)
             cv2.putText(
                 color_array,
-                f" a:({round(math.degrees(Angle_rad), 2)}, coo:{round(x_coord, 2)},d: {round(cone_distance,2)},c: {cone_positions[i][2]}",
-                (cone_positions[i][0], cone_positions[i][1]),
+                f"a:{round(math.degrees(Angle_rad),2)}  x:{round(x_coord,2)}  d:{round(cone_distance,2)}  c:{cone_positions[i][2]}",
+                (u, v),
                 cv2.FONT_HERSHEY_DUPLEX,
                 0.5,
                 (0, 0, 255)
@@ -197,7 +230,6 @@ class Visualizer:
 # -------------------------
 class Main:
     def __init__(self):
-        # Same global values kept via classes
         self.cam = RealSenseCam(res_x=1280, res_y=720, fps=30, fov_x=87)
         self.perception = ConePerception(res_x=1280, fov_x=87, afvig=25)
         self.vis = Visualizer()
@@ -207,12 +239,12 @@ class Main:
             while True:
                 color_array, depth_frame, depth_img = self.cam.get_processed_frames()
                 color_array, cone_positions = self.perception.process_color(color_array)
-                # Annotate using accurate intrinsics-based angle
+
                 self.vis.annotate_cones(
                     color_array,
                     depth_frame,
                     cone_positions,
-                    self.cam.color_intr  # <— pass intrinsics
+                    self.cam.color_intr
                 )
                 self.vis.show(color_array, depth_img)
 
