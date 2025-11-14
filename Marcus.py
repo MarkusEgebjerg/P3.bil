@@ -181,7 +181,7 @@ class Visualizer:
         return float(np.median(vals))
 
     @staticmethod
-    def annotate_cones(color_array, depth_frame, cone_positions, intrinsics, sample_bias_px=4):
+    def annotate_cones(color_array, depth_frame, cone_positions, intrinsics, sample_bias_px=10):
         """
         Angle from intrinsics; distance = robust median over NxN window (biased a few pixels downward to avoid edge).
         """
@@ -210,14 +210,7 @@ class Visualizer:
 
             # Draw + annotate
             cv2.circle(color_array, (u, v), 4, (255, 255, 255), -1)
-            cv2.putText(
-                color_array,
-                f"a:{round(math.degrees(Angle_rad),2)}  x:{round(x_coord,2)}  d:{round(cone_distance,2)}  c:{cone_positions[i][2]}",
-                (u, v),
-                cv2.FONT_HERSHEY_DUPLEX,
-                0.5,
-                (0, 0, 255)
-            )
+            cv2.putText(color_array,f"a:{round(math.degrees(Angle_rad),2)}  x:{round(x_coord,2)}  d:{round(cone_distance,2)}  c:{cone_positions[i][2]}",(u, v),cv2.FONT_HERSHEY_DUPLEX,0.5,(0, 0, 255))
 
     @staticmethod
     def show(color_array, depth_img):
@@ -240,12 +233,7 @@ class Main:
                 color_array, depth_frame, depth_img = self.cam.get_processed_frames()
                 color_array, cone_positions = self.perception.process_color(color_array)
 
-                self.vis.annotate_cones(
-                    color_array,
-                    depth_frame,
-                    cone_positions,
-                    self.cam.color_intr
-                )
+                self.vis.annotate_cones(color_array,depth_frame,cone_positions,self.cam.color_intr)
                 self.vis.show(color_array, depth_img)
 
                 if cv.waitKey(1) & 0xFF == ord('q'):
