@@ -133,7 +133,7 @@ while True:
 
         # --- get a robust per-frame distance (spatial median) ---
         # If you didn't add depth_median_5x5, use get_distance(x_px, y_px) directly.
-        d_meas = (depth_frame, int(x_px), int(y_px))
+        d_meas = depth_frame.get_distance(int(x_px), int(y_px))
 
         # --- push to rolling history and compute temporal median ---
         dist_hist[color_lbl].append(d_meas)
