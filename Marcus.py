@@ -177,7 +177,6 @@ class ConeCenterPoints:
                         cone_positions.append(contour_centers[i])
 
         return cone_positions
-
     def annotate(self, color_array, depth_frame, cone_positions):
         # Draw selection dot and text
         for (cx, cy, label) in cone_positions:
