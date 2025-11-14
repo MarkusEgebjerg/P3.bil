@@ -4,142 +4,190 @@ import numpy as np
 import pyrealsense2 as rs
 import math
 
-pipe = rs.pipeline()
-cfg = rs.config()
-res_x = 1280
-res_y = 720
-fps = 30
-fov_x = 87
+class Camera:
+    def __init__(self, res_x=1280, res_y=720, fps=30, fov_x=87):
+        self.res_x = res_x
+        self.res_y = res_y
+        self.fps = fps
+        self.fov_x = fov_x
 
-cfg.enable_stream(rs.stream.color, res_x, res_y, rs.format.bgr8, fps)
-cfg.enable_stream(rs.stream.depth, res_x, res_y, rs.format.z16, fps)
+        self.pipe = rs.pipeline()
+        self.cfg = rs.config()
+        self.cfg.enable_stream(rs.stream.color, self.res_x, self.res_y, rs.format.bgr8, self.fps)
+        self.cfg.enable_stream(rs.stream.depth, self.res_x, self.res_y, rs.format.z16, self.fps)
 
-stream = pipe.start(cfg)
-depth_sensor = stream.get_device().first_depth_sensor()
-depth_scale = depth_sensor.get_depth_scale()
+        self.stream = self.pipe.start(self.cfg)
+        depth_sensor = self.stream.get_device().first_depth_sensor()
+        self.depth_scale = depth_sensor.get_depth_scale()
 
-lowerYellow = np.array([20, 110, 90])
-upperYellow = np.array([33, 255, 255])
+        self.align = rs.align(rs.stream.color)
+        self.PxD = self.res_x / self.fov_x
 
-lowerBlue = np.array([105, 120, 60])
-upperBlue = np.array([135, 255, 255])
-kernel = np.ones((2, 3))
-afvig = 25
+    def get_frames(self):
+        frameset = self.pipe.wait_for_frames()
+        frames = self.align.process(frameset)
+        depth_frame = frames.get_depth_frame()
+        color_frame = frames.get_color_frame()
+        return color_frame, depth_frame
 
-PxD = res_x / fov_x
-align = rs.align(rs.stream.color)
+    def filter_depth(self, depth_frame):
+        spatial = rs.spatial_filter()
+        depth_frame = spatial.process(depth_frame)
+        spatial.set_option(rs.option.filter_magnitude, 5)
+        spatial.set_option(rs.option.filter_smooth_alpha, 1)
+        spatial.set_option(rs.option.filter_smooth_delta, 50)
+        depth_frame = spatial.process(depth_frame)
 
+        spatial.set_option(rs.option.holes_fill, 0)
+        depth_frame = spatial.process(depth_frame)
+        depth_frame = depth_frame.as_depth_frame()
+        return depth_frame
 
-def Masking(mask):
-    mask_Open = cv2.erode(mask, kernel, iterations=3)
-    mask_Close = cv2.dilate(mask_Open, kernel, iterations=10)
-    # mask_Open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
-    # mask_Close = cv2.morphologyEx(mask_Close_1, cv2.MORPH_CLOSE, kernel, iterations=2)
-    return mask_Close
-
-
-while True:
-    frameset = pipe.wait_for_frames()
-    frames = align.process(frameset)
-
-    # Tager dybde- og farve billeddet af samlingen "frames"
-    depth_frame = frames.get_depth_frame()
-    color_frame = frames.get_color_frame()
-
-    # Laver om til numpy array
-    spatial = rs.spatial_filter()
-    temporal = rs.temporal_filter()
-
-    depth_frame = spatial.process(depth_frame)
-
-    spatial.set_option(rs.option.filter_magnitude, 5)
-    spatial.set_option(rs.option.filter_smooth_alpha, 1)
-    spatial.set_option(rs.option.filter_smooth_delta, 50)
-    depth_frame = spatial.process(depth_frame)
-
-    spatial.set_option(rs.option.holes_fill, 0)
-    depth_frame = spatial.process(depth_frame)
-    depth_frame = depth_frame.as_depth_frame()
-
-    # depth_frame3 = temporal.process(depth_frame)
-    depth_array = np.asanyarray(depth_frame.get_data())
-    depth_img = cv2.applyColorMap(cv2.convertScaleAbs(depth_array, alpha=0.06), cv2.COLORMAP_JET)
-
-    color_array = np.asanyarray(color_frame.get_data())
-    frame_HSV = cv2.cvtColor(color_array, cv2.COLOR_BGR2HSV)
-    frame_threshold_Y = cv2.inRange(frame_HSV, lowerYellow, upperYellow)
-    frame_threshold_B = cv2.inRange(frame_HSV, lowerBlue, upperBlue)
-    # Mega_Mask = cv2.bitwise_or(frame_threshold_B, frame_threshold_Y)
-    Masking_Clean_Y = Masking(frame_threshold_Y)
-    Masking_Clean_B = Masking(frame_threshold_B)
-    contours_b, _ = cv2.findContours(Masking_Clean_B, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    contours_y, _ = cv2.findContours(Masking_Clean_Y, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    contour_centers = []
-    cone_positions = []
-
-    for i in range(2):
-        list = contours_b
-        if i == 1:
-            list = contours_y
-
-        for contour in list:
-            # Step 4: Approximate the contour.......
-            area = cv2.contourArea(contour)
-            if area < 60:
-                continue
-
-            epsilon = 0.04 * cv2.arcLength(contour, True)
-            approx = cv2.approxPolyDP(contour, epsilon, True)
-
-            M = cv2.moments(contour)
-            cx = int(M['m10'] / M['m00'])
-            cy = int(M['m01'] / M['m00'])
-            if i == 1:
-                current_center = (cx, cy, "Yellow")
-                contour_centers.append(current_center)
-            elif i == 0:
-                current_center = (cx, cy, "Blue")
-                contour_centers.append(current_center)
-
-            # Draw the contour
-            if len(approx) > 3:
-                cv2.drawContours(color_array, [approx], 0, (255, 0, 0), 5)
-                # cv2.circle(canny, (cx, cy), 4, (255, 255, 255), -1)
-
-    # Loops through alle contour centers. checks if two of them are less than "Afvig" pixels away horizontally (x).
-    # if there are, the center highest up (biggest y) is added to cone_positions.
-    for i in range(0, len(contour_centers)):
-        p = 0
-        for j in range(0, len(contour_centers)):
-
-            if i != j and -afvig < (contour_centers[i][0] - contour_centers[j][0]) < afvig and contour_centers[i][1] < \
-                    contour_centers[j][1]:
-                cone_positions.append(contour_centers[i])  #øverste contour gemmes i cone_positions
-
-            if i != j and -afvig > (contour_centers[i][0] - contour_centers[j][0]) or afvig < (contour_centers[i][0] - contour_centers[j][0]):
-                p = p + 1
-                if p >= len(contour_centers) - 1:
-                    cv2.circle(color_array, (contour_centers[i][0],contour_centers[i][1]), 4, (255, 255, 255), -1)
-                    cone_positions.append(contour_centers[i])    #contour gemmes hvis den står alane
+    def stop(self):
+        self.pipe.stop()
 
 
-    for i in range(0, len(cone_positions)):
-        Angle = (cone_positions[i][0] / PxD - fov_x//2) * math.pi / 180
+class ConeDetector:
+    def __init__(self):
+        # Your thresholds and kernel
+        self.lowerYellow = np.array([20, 110, 90])
+        self.upperYellow = np.array([33, 255, 255])
+        self.lowerBlue = np.array([105, 120, 60])
+        self.upperBlue = np.array([135, 255, 255])
+        self.kernel = np.ones((2, 3), dtype=np.uint8)
 
-        cv2.circle(color_array, (cone_positions[i][0],cone_positions[i][1] ), 4, (255, 255, 255), -1)
-        cone_distance = depth_frame.get_distance(int(cone_positions[i][0]), int(cone_positions[i][1]))
-        x_coord = abs(np.sin(Angle) * cone_distance)
+    def Masking(self, mask):
+        mask_Open = cv2.erode(mask, self.kernel, iterations=3)
+        mask_Close = cv2.dilate(mask_Open, self.kernel, iterations=10)
+        return mask_Close
 
-        #cv2.putText(color_array, f"Angle: ({(round(Angle, 2))}, {(round(cone_distance, 2))}, {(cone_positions[i][2])}", (cone_positions[i][0],cone_positions[i][1]), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
-        cv2.putText(color_array, f" a:({(round(Angle*(180/math.pi), 2))}, coo:{(round(x_coord, 2))},d: {(round(cone_distance,2))},c: {(cone_positions[i][2])}",(cone_positions[i][0], cone_positions[i][1]), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
+    def find_contours(self, color_frame):
+        color_array = np.asanyarray(color_frame.get_data())
+        frame_HSV = cv2.cvtColor(color_array, cv2.COLOR_BGR2HSV)
+
+        frame_threshold_Y = cv2.inRange(frame_HSV, self.lowerYellow, self.upperYellow)
+        frame_threshold_B = cv2.inRange(frame_HSV, self.lowerBlue, self.upperBlue)
+
+        Masking_Clean_Y = self.Masking(frame_threshold_Y)
+        Masking_Clean_B = self.Masking(frame_threshold_B)
+
+        contours_b, _ = cv2.findContours(Masking_Clean_B, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours_y, _ = cv2.findContours(Masking_Clean_Y, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        return color_array, contours_y, contours_b
+
+class ConeCenterPoints:
+    def __init__(self, afvig=25, PxD=1280/87, fov_x=87):
+        self.afvig = afvig
+        self.PxD = PxD
+        self.fov_x = fov_x
+
+    def build_centers_and_draw(self, contours_y, contours_b, color_array):
+        contour_centers = []
+
+        for i in range(2):
+            lst = contours_b if i == 0 else contours_y
+            for contour in lst:
+                area = cv2.contourArea(contour)
+                if area < 60:
+                    continue
+
+                epsilon = 0.04 * cv2.arcLength(contour, True)
+                approx = cv2.approxPolyDP(contour, epsilon, True)
+
+                M = cv2.moments(contour)
+                if M["m00"] == 0:
+                    continue
+                cx = int(M['m10'] / M['m00'])
+                cy = int(M['m01'] / M['m00'])
+                label = "Blue" if i == 0 else "Yellow"
+                contour_centers.append((cx, cy, label))
+
+                if len(approx) > 3:
+                    cv2.drawContours(color_array, [approx], 0, (255, 0, 0), 5)
+
+        return contour_centers
+
+    def select_cone_positions(self, contour_centers, color_array):
+        cone_positions = []
+        n = len(contour_centers)
+
+        for i in range(n):
+            p = 0
+            for j in range(n):
+                if i == j:
+                    continue
+
+                dx = contour_centers[i][0] - contour_centers[j][0]
+                # “Paired” horizontally within +/- afvig and higher up
+                if -self.afvig < dx < self.afvig and contour_centers[i][1] < contour_centers[j][1]:
+                    cone_positions.append(contour_centers[i])
+
+                # “Alone” horizontally beyond afvig: keep it
+                if (-self.afvig > dx) or (self.afvig < dx):
+                    p += 1
+                    if p >= n - 1:
+                        cv2.circle(color_array, (contour_centers[i][0], contour_centers[i][1]),
+                                   4, (255, 255, 255), -1)
+                        cone_positions.append(contour_centers[i])
+
+        return cone_positions
+
+    def annotate(self, color_array, depth_frame, cone_positions):
+        for (cx, cy, label) in cone_positions:
+            # Your original angle formula (kept)
+            Angle = (cx / self.PxD - self.fov_x // 2) * math.pi / 180.0
+
+            cv2.circle(color_array, (cx, cy), 4, (255, 255, 255), -1)
+            cone_distance = depth_frame.get_distance(int(cx), int(cy))
+            x_coord = abs(np.sin(Angle) * cone_distance)
+
+            cv2.putText(
+                color_array,
+                f"a:{round(Angle*(180/math.pi),2)}, coo:{round(x_coord,2)}, d:{round(cone_distance,2)}, c:{label}",
+                (cx, cy),
+                cv2.FONT_HERSHEY_DUPLEX,
+                0.5,
+                (0, 0, 255)
+            )
+
+class MAIN:
+    def __init__(self):
+        # Camera and helpers
+        self.cam = Camera(res_x=1280, res_y=720, fps=30, fov_x=87)
+        self.detector = ConeDetector()
+        self.center_ops = ConeCenterPoints(afvig=25, PxD=self.cam.PxD, fov_x=self.cam.fov_x)
+
+    def run(self):
+        try:
+            while True:
+                # Get frames
+                color_frame, depth_frame_raw = self.cam.get_frames()
+                depth_frame = self.cam.filter_depth(depth_frame_raw)
+
+                # Visual depth image (same as before)
+                depth_array = np.asanyarray(depth_frame.get_data())
+                depth_img = cv2.applyColorMap(cv2.convertScaleAbs(depth_array, alpha=0.06), cv2.COLORMAP_JET)
+
+                # Segment + contours
+                color_array, contours_y, contours_b = self.detector.find_contours(color_frame)
+
+                # Centers + pairing
+                contour_centers = self.center_ops.build_centers_and_draw(contours_y, contours_b, color_array)
+                cone_positions = self.center_ops.select_cone_positions(contour_centers, color_array)
+
+                # Annotate (angle/coord/distance text)
+                self.center_ops.annotate(color_array, depth_frame, cone_positions)
+
+                cv.imshow("thresh", color_array)
+                cv.imshow("depth", depth_img)
+
+                if cv.waitKey(1) & 0xFF == ord('q'):
+                    break
+        finally:
+            self.cam.stop()
+            cv.destroyAllWindows()
 
 
-
-    cv.imshow("thresh", color_array)
-    cv.imshow("depth", depth_img)
-    # cv.imshow("clean mask y", Masking_Clean_Y)
-    # cv.imshow("clean mask b", Masking_Clean_B)
-    if cv.waitKey(1) & 0xFF == ord('q'):
-        break
-pipe.stop()
+if __name__ == "__main__":
+    MAIN().run()
