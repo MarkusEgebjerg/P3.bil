@@ -22,7 +22,7 @@ class Camera:
         # Start streaming
         self.stream = self.pipe.start(self.cfg)
 
-        # Depth scale (meters per unit) – useful if working with raw depth units
+        # Depth scale (meters per unit)
         depth_sensor = self.stream.get_device().first_depth_sensor()
         self.depth_scale = depth_sensor.get_depth_scale()
 
@@ -33,12 +33,7 @@ class Camera:
         self.PxD = self.res_x / self.fov_x
 
     def get_frames(self):
-        """
-        Grab a synchronized frameset, align depth to color, and return both frames.
-        Returns:
-            color_frame (rs.video_frame)
-            depth_frame (rs.depth_frame) – NOT filtered yet
-        """
+        # Grab a synchronized frameset, align depth to color, and return both frames.
         frameset = self.pipe.wait_for_frames()
         frames = self.align.process(frameset)
         depth_frame = frames.get_depth_frame()
@@ -46,10 +41,7 @@ class Camera:
         return color_frame, depth_frame
 
     def filter_depth(self, depth_frame):
-        """
-        Apply spatial filtering for smoothing/hole reduction.
-        (Matches your original order/parameters.)
-        """
+        # Apply spatial filtering for smoothing/hole reduction.
         spatial = rs.spatial_filter()
 
         # Initial pass
@@ -62,7 +54,7 @@ class Camera:
         depth_frame = spatial.process(depth_frame)
 
         # Hole filling (0 = off; consider >0 for more robustness)
-        spatial.set_option(rs.option.holes_fill, 0)
+        spatial.set_option(rs.option.holes_fill, 1)
         depth_frame = spatial.process(depth_frame)
 
         # Ensure depth frame type
@@ -86,22 +78,13 @@ class ConeDetector:
         self.kernel = np.ones((2, 3), dtype=np.uint8)
 
     def Masking(self, mask):
-        """
-        Clean the binary mask using erosion then dilation.
-        Erode removes small noise; dilate restores object size.
-        """
+        # Clean the binary mask using erosion then dilation.
         mask_Open  = cv2.erode(mask, self.kernel, iterations=3)
         mask_Close = cv2.dilate(mask_Open, self.kernel, iterations=10)
         return mask_Close
 
     def find_contours(self, color_frame):
-        """
-        Convert color frame → HSV → threshold by color → clean masks → find contours.
-        Returns:
-            color_array (np.ndarray) – BGR image for drawing/visualization
-            contours_y (list)        – yellow cone contours
-            contours_b (list)        – blue cone contours
-        """
+        # Convert color frame → HSV → threshold by color → clean masks → find contours.
         color_array = np.asanyarray(color_frame.get_data())
         frame_HSV = cv2.cvtColor(color_array, cv2.COLOR_BGR2HSV)
 
@@ -129,14 +112,10 @@ class ConeCenterPoints:
         self.fov_x = fov_x
 
     def build_centers_and_draw(self, contours_y, contours_b, color_array):
-        """
-        Compute centers (moments) for all contours, label color, draw polygons for visualization.
-        Returns:
-            contour_centers: list of (cx, cy, label)
-        """
+        # Compute centers (moments) for all contours, label color, draw polygons for visualization.
         contour_centers = []
 
-        # i==0 → blue list; i==1 → yellow list (kept same as your original structure)
+        # i==0 → blue list; i==1 → yellow list
         for i in range(2):
             lst = contours_b if i == 0 else contours_y
             for contour in lst:
@@ -145,7 +124,7 @@ class ConeCenterPoints:
                 if area < 60:
                     continue
 
-                # Approximate polygon for nice drawing
+                # Approximate polygon
                 epsilon = 0.04 * cv2.arcLength(contour, True)
                 approx = cv2.approxPolyDP(contour, epsilon, True)
 
@@ -158,20 +137,17 @@ class ConeCenterPoints:
                 label = "Blue" if i == 0 else "Yellow"
                 contour_centers.append((cx, cy, label))
 
-                # Visualize contour for debugging
+                # Visualize contour
                 if len(approx) > 3:
                     cv2.drawContours(color_array, [approx], 0, (255, 0, 0), 5)
 
         return contour_centers
 
     def select_cone_positions(self, contour_centers, color_array):
-        """
-        Pair-selection logic:
-          - If two centers are horizontally close (±afvig), keep the one higher up (smaller y).
-          - If a center is "alone" horizontally (no others within ±afvig), keep it anyway.
-        Returns:
-            cone_positions: list of selected centers (cx, cy, label)
-        """
+        # Pair-selection logic:
+        # - If two centers are horizontally close (±afvig), keep the one higher up (smaller y).
+        # - If a center is "alone" horizontally (no others within ±afvig), keep it anyway.
+
         cone_positions = []
         n = len(contour_centers)
 
@@ -199,17 +175,12 @@ class ConeCenterPoints:
         return cone_positions
 
     def annotate(self, color_array, depth_frame, cone_positions):
-        """
-        Draw selection dot and text:
-          - Angle (deg) via your PxD/FOV approximation
-          - Lateral x component (meters) relative to camera
-          - Depth (meters) from aligned depth at (cx, cy)
-        """
+        # Draw selection dot and text
         for (cx, cy, label) in cone_positions:
-            # Your original angle formula (kept)
+            # Angle formula
             Angle = (cx / self.PxD - self.fov_x // 2) * math.pi / 180.0
 
-            # Mark center
+            # Draw center
             cv2.circle(color_array, (cx, cy), 4, (255, 255, 255), -1)
 
             # Distance at that pixel (meters)
@@ -227,6 +198,7 @@ class ConeCenterPoints:
                 0.5,
                 (0, 0, 255)
             )
+class MidWayPoints
 
 
 class MAIN:
