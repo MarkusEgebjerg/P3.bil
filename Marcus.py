@@ -188,6 +188,5 @@ class MAIN:
             self.cam.stop()
             cv.destroyAllWindows()
 
-
 if __name__ == "__main__":
     MAIN().run()
