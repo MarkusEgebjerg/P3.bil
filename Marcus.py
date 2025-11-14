@@ -62,13 +62,12 @@ class Camera:
         return depth_frame
 
     def stop(self):
-        """Stop the RealSense pipeline."""
         self.pipe.stop()
 
 
 class ConeDetector:
     def __init__(self):
-        # HSV thresholds for yellow and blue cones (tuned to your setup)
+        # HSV thresholds for yellow and blue cones
         self.lowerYellow = np.array([20, 110, 90])
         self.upperYellow = np.array([33, 255, 255])
         self.lowerBlue   = np.array([105, 120, 60])
@@ -96,7 +95,7 @@ class ConeDetector:
         Masking_Clean_Y = self.Masking(frame_threshold_Y)
         Masking_Clean_B = self.Masking(frame_threshold_B)
 
-        # Contour extraction (external contours only)
+        # Contour extraction
         contours_b, _ = cv2.findContours(Masking_Clean_B, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         contours_y, _ = cv2.findContours(Masking_Clean_Y, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -107,7 +106,7 @@ class ConeCenterPoints:
     def __init__(self, afvig=25, PxD=1280/87, fov_x=87):
         # Horizontal tolerance in pixels to consider two centers "paired"
         self.afvig = afvig
-        # Pixels-per-degree and FOV used for your angle approximation
+        # Pixels-per-degree and FOV used for angle approximation
         self.PxD = PxD
         self.fov_x = fov_x
 
@@ -142,6 +141,11 @@ class ConeCenterPoints:
                     cv2.drawContours(color_array, [approx], 0, (255, 0, 0), 5)
 
         return contour_centers
+
+
+
+
+
 
     def select_cone_positions(self, contour_centers, color_array):
         # Pair-selection logic:
@@ -198,7 +202,7 @@ class ConeCenterPoints:
                 0.5,
                 (0, 0, 255)
             )
-class MidWayPoints
+#class MidWayPoints:
 
 
 class MAIN:
