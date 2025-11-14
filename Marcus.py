@@ -133,7 +133,7 @@ while True:
 
         # --- get a robust per-frame distance (spatial median) ---
         # If you didn't add depth_median_5x5, use get_distance(x_px, y_px) directly.
-        d_meas = depth_frame.get_distance(int(x_px), int(y_px))
+        d_meas = depth_frame.get_distance((x_px),(y_px))
 
         # --- push to rolling history and compute temporal median ---
         dist_hist[color_lbl].append(d_meas)
@@ -145,7 +145,7 @@ while True:
         # draw text using the temporal median
         cv2.putText(
             color_array,
-            f"a:{(Angle * 180 / math.pi):.2f}°, x:{x_coord:.2f}m, d_med:{d_med:.2f}m, c:{color_lbl}",
+            f"a:{(Angle * 180 / math.pi):.2f}, off:{x_coord:.2f}m, d:{d_med:.2f}m, c:{color_lbl}",
             (x_px, y_px),
             cv2.FONT_HERSHEY_DUPLEX,
             0.5,
