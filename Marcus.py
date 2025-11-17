@@ -3,16 +3,13 @@ import cv2 as cv
 import numpy as np
 import pyrealsense2 as rs
 import math
-from collections import deque, defaultdict
 
-
+# ---------------- RealSense setup ----------------
 pipe = rs.pipeline()
 cfg = rs.config()
 res_x = 1280
 res_y = 720
 fps = 30
-fov_x = 87
-dist_hist = {"Yellow": deque(maxlen=20), "Blue":   deque(maxlen=20)}
 
 cfg.enable_stream(rs.stream.color, res_x, res_y, rs.format.bgr8, fps)
 cfg.enable_stream(rs.stream.depth, res_x, res_y, rs.format.z16, fps)
@@ -21,23 +18,29 @@ stream = pipe.start(cfg)
 depth_sensor = stream.get_device().first_depth_sensor()
 depth_scale = depth_sensor.get_depth_scale()
 
+# ---------------- Color thresholds ----------------
 lowerYellow = np.array([20, 110, 90])
 upperYellow = np.array([33, 255, 255])
 
 lowerBlue = np.array([105, 120, 60])
 upperBlue = np.array([135, 255, 255])
-kernel = np.ones((2, 3))
+
+kernel = np.ones((2, 3), np.uint8)
 afvig = 25
 
-PxD = res_x / fov_x
 align = rs.align(rs.stream.color)
+
+# Will be filled once we have a valid depth frame
+depth_intrin = None
+
+# Depth filters (created once)
+spatial = rs.spatial_filter()
+temporal = rs.temporal_filter()
 
 
 def Masking(mask):
     mask_Open = cv2.erode(mask, kernel, iterations=3)
     mask_Close = cv2.dilate(mask_Open, kernel, iterations=10)
-    # mask_Open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
-    # mask_Close = cv2.morphologyEx(mask_Close_1, cv2.MORPH_CLOSE, kernel, iterations=2)
     return mask_Close
 
 
@@ -45,14 +48,18 @@ while True:
     frameset = pipe.wait_for_frames()
     frames = align.process(frameset)
 
-    # Tager dybde- og farve billeddet af samlingen "frames"
+    # Get aligned depth + color frames
     depth_frame = frames.get_depth_frame()
     color_frame = frames.get_color_frame()
 
-    # Laver om til numpy array
-    spatial = rs.spatial_filter()
-    temporal = rs.temporal_filter()
+    if not depth_frame or not color_frame:
+        continue
 
+    # Get intrinsics once from the (aligned) depth frame
+    if depth_intrin is None:
+        depth_intrin = depth_frame.profile.as_video_stream_profile().intrinsics
+
+    # -------- Depth filtering --------
     depth_frame = spatial.process(depth_frame)
 
     spatial.set_option(rs.option.filter_magnitude, 5)
@@ -64,30 +71,34 @@ while True:
     depth_frame = spatial.process(depth_frame)
     depth_frame = depth_frame.as_depth_frame()
 
-    # depth_frame3 = temporal.process(depth_frame)
+    # For visualization only
     depth_array = np.asanyarray(depth_frame.get_data())
-    depth_img = cv2.applyColorMap(cv2.convertScaleAbs(depth_array, alpha=0.06), cv2.COLORMAP_JET)
+    depth_img = cv2.applyColorMap(
+        cv2.convertScaleAbs(depth_array, alpha=0.06),
+        cv2.COLORMAP_JET
+    )
 
     color_array = np.asanyarray(color_frame.get_data())
     frame_HSV = cv2.cvtColor(color_array, cv2.COLOR_BGR2HSV)
+
+    # -------- Color thresholding --------
     frame_threshold_Y = cv2.inRange(frame_HSV, lowerYellow, upperYellow)
     frame_threshold_B = cv2.inRange(frame_HSV, lowerBlue, upperBlue)
-    # Mega_Mask = cv2.bitwise_or(frame_threshold_B, frame_threshold_Y)
+
     Masking_Clean_Y = Masking(frame_threshold_Y)
     Masking_Clean_B = Masking(frame_threshold_B)
+
     contours_b, _ = cv2.findContours(Masking_Clean_B, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contours_y, _ = cv2.findContours(Masking_Clean_Y, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     contour_centers = []
     cone_positions = []
 
+    # -------- Find contour centers and label by color --------
     for i in range(2):
-        list = contours_b
-        if i == 1:
-            list = contours_y
+        lst = contours_b if i == 0 else contours_y
 
-        for contour in list:
-            # Step 4: Approximate the contour.......
+        for contour in lst:
             area = cv2.contourArea(contour)
             if area < 60:
                 continue
@@ -96,67 +107,85 @@ while True:
             approx = cv2.approxPolyDP(contour, epsilon, True)
 
             M = cv2.moments(contour)
-            cx = int(M['m10'] / M['m00'])
-            cy = int(M['m01'] / M['m00'])
-            if i == 1:
-                current_center = (cx, cy, "Yellow")
-                contour_centers.append(current_center)
-            elif i == 0:
-                current_center = (cx, cy, "Blue")
-                contour_centers.append(current_center)
+            if M['m00'] == 0:
+                continue
 
-            # Draw the contour
+            cx_c = int(M['m10'] / M['m00'])
+            cy_c = int(M['m01'] / M['m00'])
+
+            color_name = "Blue" if i == 0 else "Yellow"
+            current_center = (cx_c, cy_c, color_name)
+            contour_centers.append(current_center)
+
             if len(approx) > 3:
                 cv2.drawContours(color_array, [approx], 0, (255, 0, 0), 5)
-                # cv2.circle(canny, (cx, cy), 4, (255, 255, 255), -1)
 
-    # Loops through alle contour centers. checks if two of them are less than "Afvig" pixels away horizontally (x).
-    # if there are, the center highest up (biggest y) is added to cone_positions.
+    # -------- Pair top cones / single cones into cone_positions --------
     for i in range(0, len(contour_centers)):
         p = 0
         for j in range(0, len(contour_centers)):
+            # Two centers close in x, one above the other
+            if i != j and -afvig < (contour_centers[i][0] - contour_centers[j][0]) < afvig \
+                    and contour_centers[i][1] < contour_centers[j][1]:
+                cone_positions.append(contour_centers[i])  # upper contour saved
 
-            if i != j and -afvig < (contour_centers[i][0] - contour_centers[j][0]) < afvig and contour_centers[i][1] < \
-                    contour_centers[j][1]:
-                cone_positions.append(contour_centers[i])  #øverste contour gemmes i cone_positions
-
-            if i != j and -afvig > (contour_centers[i][0] - contour_centers[j][0]) or afvig < (contour_centers[i][0] - contour_centers[j][0]):
-                p = p + 1
+            # Single cone (no other within afvig in x)
+            if i != j and (
+                -afvig > (contour_centers[i][0] - contour_centers[j][0]) or
+                afvig < (contour_centers[i][0] - contour_centers[j][0])
+            ):
+                p += 1
                 if p >= len(contour_centers) - 1:
-                    cv2.circle(color_array, (contour_centers[i][0],contour_centers[i][1]), 4, (255, 255, 255), -1)
-                    cone_positions.append(contour_centers[i])    #contour gemmes hvis den står alane
+                    cv2.circle(
+                        color_array,
+                        (contour_centers[i][0], contour_centers[i][1]),
+                        4, (255, 255, 255), -1
+                    )
+                    cone_positions.append(contour_centers[i])
 
-    for i in range(len(cone_positions)):
-        x_px, y_px, color_lbl = cone_positions[i]  # (x, y, "Yellow"/"Blue")
-        Angle = (x_px / PxD - fov_x // 2) * math.pi / 180
-        cv2.circle(color_array, (x_px, y_px), 4, (255, 255, 255), -1)
+    # -------- Compute distances & angle (Z, ground, 3D) --------
+    for i in range(0, len(cone_positions)):
+        u = float(cone_positions[i][0])  # pixel x
+        v = float(cone_positions[i][1])  # pixel y
 
-        # --- get a robust per-frame distance (spatial median) ---
-        # If you didn't add depth_median_5x5, use get_distance(x_px, y_px) directly.
-        d_meas = depth_frame.get_distance((x_px),(y_px))
+        # Depth value (meters) at this pixel (this is along Z axis!)
+        depth_m = float(depth_frame.get_distance(int(u), int(v)))
+        if depth_m <= 0:
+            continue  # invalid depth
 
-        # --- push to rolling history and compute temporal median ---
-        dist_hist[color_lbl].append(d_meas)
-        d_med = float(np.median(dist_hist[color_lbl]))  # median over last N frames for this color
+        # 3D point in camera coordinates (X, Y, Z) in meters
+        X, Y, Z = rs.rs2_deproject_pixel_to_point(depth_intrin, [u, v], depth_m)
 
-        # whatever you compute from angle can use d_med now
-        x_coord = abs(np.sin(Angle) * d_med)
+        # Horizontal angle relative to camera optical axis
+        angle_rad = math.atan2(X, Z)
+        angle_deg = angle_rad * 180.0 / math.pi
 
-        # draw text using the temporal median
+        lateral = X          # left/right
+        forward_Z = Z        # forward (depth axis, same idea as get_distance)
+        ground_dist = math.hypot(X, Z)            # distance in X-Z plane
+        direct_dist = math.sqrt(X*X + Y*Y + Z*Z)  # full 3D distance
+
+        cv2.circle(color_array, (int(u), int(v)), 4, (255, 255, 255), -1)
+        text = (
+            f"a:{angle_deg:.2f}, "
+            f"x:{lateral:.2f}m, "
+            f"Z:{forward_Z:.2f}m, "   # depth axis
+            #f"Rg:{ground_dist:.2f}m, "  # ground distance (what you probably expect)
+            f"R3:{direct_dist:.2f}m, "
+            f"c:{cone_positions[i][2]}"
+        )
         cv2.putText(
-            color_array,
-            f"a:{(Angle * 180 / math.pi):.2f}, off:{x_coord:.2f}m, d:{d_med:.2f}m, c:{color_lbl}",
-            (x_px, y_px),
-            cv2.FONT_HERSHEY_DUPLEX,
-            0.5,
-            (0, 0, 255),
-            1
+            color_array, text, (int(u)-250, int(v)),
+            cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255), 1
         )
 
     cv.imshow("thresh", color_array)
-    cv.imshow("depth", depth_img)
+    #cv.imshow("depth", depth_img)
     # cv.imshow("clean mask y", Masking_Clean_Y)
     # cv.imshow("clean mask b", Masking_Clean_B)
+
     if cv.waitKey(1) & 0xFF == ord('q'):
         break
+
 pipe.stop()
+cv.destroyAllWindows()
