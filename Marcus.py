@@ -30,11 +30,14 @@ PxD = res_x / fov_x
 align = rs.align(rs.stream.color)
 
 
+depth_intrin = None
+
+spatial = rs.spatial_filter()
+temporal = rs.temporal_filter()
+
 def Masking(mask):
     mask_Open = cv2.erode(mask, kernel, iterations=3)
     mask_Close = cv2.dilate(mask_Open, kernel, iterations=10)
-    # mask_Open = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
-    # mask_Close = cv2.morphologyEx(mask_Close_1, cv2.MORPH_CLOSE, kernel, iterations=2)
     return mask_Close
 
 
@@ -46,9 +49,13 @@ while True:
     depth_frame = frames.get_depth_frame()
     color_frame = frames.get_color_frame()
 
-    # Laver om til numpy array
-    spatial = rs.spatial_filter()
-    temporal = rs.temporal_filter()
+    if not depth_frame or not color_frame:
+        continue
+
+    if depth_intrin is None:
+        depth_intrin = depth_frame.profile.as_video_stream_profile().get_intrinsics()
+
+
 
     depth_frame = spatial.process(depth_frame)
 
@@ -61,17 +68,18 @@ while True:
     depth_frame = spatial.process(depth_frame)
     depth_frame = depth_frame.as_depth_frame()
 
-    # depth_frame3 = temporal.process(depth_frame)
     depth_array = np.asanyarray(depth_frame.get_data())
     depth_img = cv2.applyColorMap(cv2.convertScaleAbs(depth_array, alpha=0.06), cv2.COLORMAP_JET)
 
     color_array = np.asanyarray(color_frame.get_data())
     frame_HSV = cv2.cvtColor(color_array, cv2.COLOR_BGR2HSV)
+
     frame_threshold_Y = cv2.inRange(frame_HSV, lowerYellow, upperYellow)
     frame_threshold_B = cv2.inRange(frame_HSV, lowerBlue, upperBlue)
-    # Mega_Mask = cv2.bitwise_or(frame_threshold_B, frame_threshold_Y)
+
     Masking_Clean_Y = Masking(frame_threshold_Y)
     Masking_Clean_B = Masking(frame_threshold_B)
+
     contours_b, _ = cv2.findContours(Masking_Clean_B, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contours_y, _ = cv2.findContours(Masking_Clean_Y, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -84,7 +92,6 @@ while True:
             list = contours_y
 
         for contour in list:
-            # Step 4: Approximate the contour.......
             area = cv2.contourArea(contour)
             if area < 60:
                 continue
@@ -105,7 +112,6 @@ while True:
             # Draw the contour
             if len(approx) > 3:
                 cv2.drawContours(color_array, [approx], 0, (255, 0, 0), 5)
-                # cv2.circle(canny, (cx, cy), 4, (255, 255, 255), -1)
 
     # Loops through alle contour centers. checks if two of them are less than "Afvig" pixels away horizontally (x).
     # if there are, the center highest up (biggest y) is added to cone_positions.
@@ -125,14 +131,19 @@ while True:
 
 
     for i in range(0, len(cone_positions)):
-        Angle = (cone_positions[i][0] / PxD - fov_x//2) * math.pi / 180
+        u = float(cone_positions[i][0])  # pixel x
+        v = float(cone_positions[i][1])  # pixel y
+        depth_m = float(depth_frame.get_distance(int(u),int(v)))
+        if depth_m <= 0:
+            continue
 
-        cv2.circle(color_array, (cone_positions[i][0],cone_positions[i][1] ), 4, (255, 255, 255), -1)
-        cone_distance = depth_frame.get_distance(int(cone_positions[i][0]), int(cone_positions[i][1]))
-        x_coord = abs(np.sin(Angle) * cone_distance)
 
-        #cv2.putText(color_array, f"Angle: ({(round(Angle, 2))}, {(round(cone_distance, 2))}, {(cone_positions[i][2])}", (cone_positions[i][0],cone_positions[i][1]), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
-        cv2.putText(color_array, f" a:({(round(Angle*(180/math.pi), 2))}, coo:{(round(x_coord, 2))},d: {(round(cone_distance,2))},c: {(cone_positions[i][2])}",(cone_positions[i][0]-200, cone_positions[i][1]), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
+        X, Y, Z = rs.rs2_deproject_pixel_to_point(depth_intrin, [u, v], depth_m)
+        #Angle = (cone_positions[i][0] / PxD - fov_x//2) * math.pi / 180
+        X = round(X,2)
+        Y = round(Y,2)
+        Z = round(Z,2)
+        cv2.putText(color_array, f" c: {(cone_positions[i][2])} coo: {[X,Z]}",(int(u)-250, int(v)), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
 
 
 
