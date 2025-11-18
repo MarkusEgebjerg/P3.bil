@@ -49,9 +49,6 @@ while True:
     depth_frame = frames.get_depth_frame()
     color_frame = frames.get_color_frame()
 
-    if not depth_frame or not color_frame:
-        continue
-
     if depth_intrin is None:
         depth_intrin = depth_frame.profile.as_video_stream_profile().get_intrinsics()
 
