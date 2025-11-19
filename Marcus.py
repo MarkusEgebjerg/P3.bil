@@ -143,6 +143,7 @@ class Perception_Module:
         return self.cone_positions, color_array
 
     def world_positioning(self, cone_positions, depth_frame,depth_intrin,color_array):
+        world_cones = []
         for i in range(0, len(cone_positions)):
             u = float(cone_positions[i][0])  # pixel x
             v = float(cone_positions[i][1])  # pixel y
@@ -154,11 +155,15 @@ class Perception_Module:
             X = round(X, 2)
             Y = round(Y, 2)
             Z = round(Z, 2)
+
+            color = cone_positions[i][2]
+            world_cones.append((u, v, X, Y, Z, color))
+
             cv2.circle(color_array, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
             cv2.putText(color_array, f" c: {(cone_positions[i][2])} coo: {[X, Z]}", (int(u), int(v)),
                         cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
 
-        return color_array
+        return color_array, world_cones
 
     def run(self):
         depth_frame, color_frame = self.get_frame()
@@ -172,7 +177,7 @@ class Perception_Module:
         contours_y, contours_b = self.contour_finder(clean_mask_y, clean_mask_b)
         contour_centers = self.contour_center_finder(contours_y, contours_b, color_array)
         cone_positions, color_array = self.contour_control(contour_centers, color_array)
-        world_pos = self.world_positioning(cone_positions, depth_frame,depth_intrin, color_array)
+        world_pos, _ = self.world_positioning(cone_positions, depth_frame,depth_intrin, color_array)
         cv.imshow("thresh", world_pos)
         if cv.waitKey(1) & 0xFF == ord('q'):
             return False
@@ -182,9 +187,6 @@ class Perception_Module:
     def shutdown(self):
         self.pipe.stop()
         cv.destroyAllWindows()
-
-
-
 
 
 
