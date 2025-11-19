@@ -68,6 +68,15 @@ class Perception_Module:
         frame_HSV = cv2.cvtColor(color_array, cv2.COLOR_BGR2HSV)
         return frame_HSV, color_array
 
+    def Cropping(self,frame_HSV, color_array):
+        # ---- CROP TO BOTTOM HALF ----
+        h, w = frame_HSV.shape[:2]
+        y_offset = h // 2  # start row of bottom half
+
+        frame_HSV_crop = frame_HSV[y_offset:h, 0:w]
+        color_crop = color_array[y_offset:h, 0:w]
+        return frame_HSV_crop, color_crop, y_offset
+
     def mask_clean(self, mask):
         mask_Open = cv2.erode(mask, self.kernel, iterations=3)
         mask_Close = cv2.dilate(mask_Open, self.kernel, iterations=10)
@@ -144,6 +153,8 @@ class Perception_Module:
                         cone_positions.append(contour_centers[i])
         return cone_positions, color_array
 
+
+
     def world_positioning(self, cone_positions, depth_frame, depth_intrin, color_array):
         """
         Convert image-space cone centers to world coordinates.
@@ -190,15 +201,7 @@ class Perception_Module:
         depth_intrin = self.update_intrinsics(depth_frame)
         depth_frame = self.spatial_filter(depth_frame)
         frame_HSV, color_array = self.color_space_conversion(color_frame)
-
-        # ---- CROP TO BOTTOM HALF ----
-        h, w = frame_HSV.shape[:2]
-        y_offset = h // 2  # start row of bottom half
-
-        frame_HSV_crop = frame_HSV[y_offset:h, 0:w]
-        color_crop = color_array[y_offset:h, 0:w]
-
-        # Detection only on cropped region
+        frame_HSV_crop, color_crop, y_offset = self.Cropping(frame_HSV,color_array)
         clean_mask_y, clean_mask_b = self.color_detector(frame_HSV_crop)
         contours_y, contours_b = self.contour_finder(clean_mask_y, clean_mask_b)
         contour_centers_crop = self.contour_center_finder(contours_y, contours_b, color_crop)
@@ -226,18 +229,7 @@ class Perception_Module:
 
 
 class Logic_Module:
-    """
-    Logic layer:
-    - pairs closest blue & yellow cones
-    - finds midpoints between pairs
-    - (later) will feed motor control
-    """
-
     def update(self, world_cones, img):
-        """
-        world_cones: list of (u, v, X, Y, Z, color)
-        img: current frame to draw on
-        """
         img, midpoints_world = self.pair_and_draw_midpoints(world_cones, img)
         # later you can return midpoints_world to motor control
         return img, midpoints_world
