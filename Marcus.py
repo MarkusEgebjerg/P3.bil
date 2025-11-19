@@ -64,9 +64,10 @@ class Perception_Module:
 
         return depth_frame
 
-
     def color_space_conversion (self, color_frame):
         color_array = np.asanyarray(color_frame.get_data())
+        res_y, res_x = color_array.shape[:2]
+        color_array = color_array[res_y//2:res_y, 0:res_x]
         frame_HSV = cv2.cvtColor(color_array, cv2.COLOR_BGR2HSV)
         return frame_HSV, color_array
 
@@ -99,7 +100,7 @@ class Perception_Module:
 
             for contour in list:
                 area = cv2.contourArea(contour)
-                if area < 60:
+                if area < 6:
                     continue
 
                 epsilon = 0.04 * cv2.arcLength(contour, True)
@@ -147,7 +148,7 @@ class Perception_Module:
         for i in range(0, len(cone_positions)):
             u = float(cone_positions[i][0])  # pixel x
             v = float(cone_positions[i][1])  # pixel y
-            depth_m = float(depth_frame.get_distance(int(u), int(v)))
+            depth_m = float(depth_frame.get_distance(int(u), int(v)+360))
             if depth_m <= 0:
                 continue
 
@@ -156,12 +157,16 @@ class Perception_Module:
             Y = round(Y, 2)
             Z = round(Z, 2)
 
-            color = cone_positions[i][2]
-            world_cones.append((u, v, X, Y, Z, color))
 
-            cv2.circle(color_array, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
-            cv2.putText(color_array, f" c: {(cone_positions[i][2])} coo: {[X, Z]}", (int(u), int(v)),
-                        cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
+
+            color = cone_positions[i][2]
+
+            if Z < 7:
+
+                world_cones.append((u, v, X, Y, Z, color))
+                cv2.circle(color_array, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
+                cv2.putText(color_array, f" c: {(cone_positions[i][2])} coo: {[X, Z]}", (int(u), int(v)),
+                            cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
 
         return color_array, world_cones
 
