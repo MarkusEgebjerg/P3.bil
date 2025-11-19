@@ -30,9 +30,6 @@ class Perception_Module:
         self.upperBlue = np.array([135, 255, 255])
 
         self.kernel = np.ones((2, 3))
-
-        self.contour_centers = []
-        self.cone_positions = []
         self.afvig = 25
 
         self.spatial = rs.spatial_filter()
@@ -94,6 +91,7 @@ class Perception_Module:
 
 
     def contour_center_finder(self, contours_y, contours_b,color_array): #finds contour center and draws contour
+        self.contour_centers = []
         for i in range(2):
             list = contours_b
             if i == 1:
@@ -101,7 +99,7 @@ class Perception_Module:
 
             for contour in list:
                 area = cv2.contourArea(contour)
-                if area < 600:
+                if area < 60:
                     continue
 
                 epsilon = 0.04 * cv2.arcLength(contour, True)
@@ -123,7 +121,7 @@ class Perception_Module:
         return self.contour_centers
 
     def contour_control(self, contour_centers, color_array):
-
+        self.cone_positions = []
         # Loops through alle contour centers. checks if two of them are less than "Afvig" pixels away horizontally (x).
         # if there are, the center highest up (biggest y) is added to cone_positions.
         #also draws a circle of each cone position.
