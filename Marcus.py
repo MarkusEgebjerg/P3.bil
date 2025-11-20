@@ -72,7 +72,7 @@ class Perception_Module:
         return frame_HSV, color_array
 
     def mask_clean(self, mask):
-        mask_Open = cv2.erode(mask, self.kernel, iterations=3)
+        mask_Open = cv2.erode(mask, self.kernel, iterations=2)
         mask_Close = cv2.dilate(mask_Open, self.kernel, iterations=10)
         return mask_Close
 
@@ -100,7 +100,7 @@ class Perception_Module:
 
             for contour in list:
                 area = cv2.contourArea(contour)
-                if area < 6:
+                if area < 30:
                     continue
 
                 epsilon = 0.04 * cv2.arcLength(contour, True)
@@ -161,9 +161,9 @@ class Perception_Module:
 
             color = cone_positions[i][2]
 
-            if Z < 7:
+            if Z < 6:
 
-                world_cones.append((u, v, X, Y, Z, color))
+                world_cones.append((X, Z, color))
                 cv2.circle(color_array, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
                 cv2.putText(color_array, f" c: {(cone_positions[i][2])} coo: {[X, Z]}", (int(u), int(v)),
                             cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
@@ -184,6 +184,7 @@ class Perception_Module:
         cone_positions, color_array = self.contour_control(contour_centers, color_array)
         world_pos, _ = self.world_positioning(cone_positions, depth_frame,depth_intrin, color_array)
         cv.imshow("thresh", world_pos)
+        cv.imshow("thres", clean_mask_y)
         if cv.waitKey(1) & 0xFF == ord('q'):
             return False
 
@@ -193,6 +194,9 @@ class Perception_Module:
         self.pipe.stop()
         cv.destroyAllWindows()
 
+class Logic_module:
+    def __init__(self,world_cones):
+        for i in range(0, len(world_cones)):
 
 
 def main():
