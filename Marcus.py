@@ -34,6 +34,8 @@ class Perception_Module:
 
         self.spatial = rs.spatial_filter()
 
+        self.logic = Logic_module()
+
     def get_frame(self):
         frameset = self.pipe.wait_for_frames()
         frames = self.align.process(frameset)
@@ -168,7 +170,7 @@ class Perception_Module:
                 cv2.putText(color_array, f" c: {(cone_positions[i][2])} coo: {[X, Z]}", (int(u), int(v)),
                             cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
 
-        return color_array, world_cones
+        return  world_cones, color_array
 
     def run(self):
         depth_frame, color_frame = self.get_frame()
@@ -182,8 +184,8 @@ class Perception_Module:
         contours_y, contours_b = self.contour_finder(clean_mask_y, clean_mask_b)
         contour_centers = self.contour_center_finder(contours_y, contours_b, color_array)
         cone_positions, color_array = self.contour_control(contour_centers, color_array)
-        world_pos, _ = self.world_positioning(cone_positions, depth_frame,depth_intrin, color_array)
-        cv.imshow("thresh", world_pos)
+        world_pos, color_array = self.world_positioning(cone_positions, depth_frame,depth_intrin, color_array)
+        cv.imshow("thresh", color_array)
         cv.imshow("thres", clean_mask_y)
         if cv.waitKey(1) & 0xFF == ord('q'):
             return False
@@ -195,8 +197,82 @@ class Perception_Module:
         cv.destroyAllWindows()
 
 class Logic_module:
-    def __init__(self,world_cones):
-        for i in range(0, len(world_cones)):
+    def __init__(self):
+        self.l = 30
+        self.WD = 29.5
+
+
+    def cone_sorting(self, world_cones):
+        blue_cones = [c for c in world_cones if c[2] == "Blue"]
+        yellow_cones = [c for c in world_cones if c[2] == "Yellow"]
+
+        blue_cones.sort(key=lambda c: c[1])
+        yellow_cones.sort(key=lambda c: c[1])
+        return blue_cones, yellow_cones
+
+    def cone_midpoints(self, blue_cones, yellow_cones, max_p= 4):
+        midpoints = []
+        n = min(len(blue_cones), len(yellow_cones), max_p)
+        for i in range(n):
+            bx, bz, _ = blue_cones[i]
+            yx, yz, _ = yellow_cones[i]
+
+            mx = (bx+yx) / 2
+            mz = (bz+yz) / 2
+
+            midpoints.append((mx, mz))
+        return midpoints
+
+    def Interpolation(self, midpoints):
+        x,z = zip(*midpoints)
+
+        x = list(x)
+        z = list(z)
+
+
+        def length(x, z):
+            len = np.sqrt(x**2 + z**2)
+            return len
+
+        if length(x[0], z[0]) >= self.l:
+
+            s = self.l / (np.sqrt(x[0]**2 + z[0] ** 2))
+            target = (s*x[0], s*z[0])  # target point for pure pursuit
+
+
+        else:
+            # uden fugleflugt
+            # rest_l = l-length(x[0], z[0])
+            # s = rest_l/(np.sqrt(x[0]2 + z[0]2))
+            # target  = (c[0][0] + sc[1][0], c[0][1] + sc[1][1]) #target point for pure pursuit
+
+            # fugleflugt
+            A = x[1]**2 + z[1]**2
+            B = 2*(x[0] * x[1] + z[0] * z[1])
+            C = x[0]**2 + z[0]*2 - self.l**2
+            D = B**2 - (4*A*C)
+            if D >= 0:
+                s_plus = (-B + np.sqrt(D)) / (2*A)
+                s_minus = (-B - np.sqrt(D)) / (2*A)
+                positive_s = [s for s in (s_plus, s_minus) if s > 0]
+                s = positive_s
+                target = (x[0] + s[0] * x[1], z[0] + s[0] * z[1])  # target point for pure pursuit
+
+        return target
+
+    def streering_angle(self, target):
+        r = self.l**2 / (target[0]*2)
+        steeringangle = math.atan2(self.WD/r)
+        return steeringangle
+
+
+
+
+
+
+
+
+
 
 
 def main():
