@@ -185,7 +185,7 @@ class Perception_Module:
         contour_centers = self.contour_center_finder(contours_y, contours_b, color_array)
         cone_positions, color_array = self.contour_control(contour_centers, color_array)
         world_pos, color_array = self.world_positioning(cone_positions, depth_frame,depth_intrin, color_array)
-        blue_cones, yellow_cones = self.logic.cone_sorting(world_cones)
+        blue_cones, yellow_cones = self.logic.cone_sorting(world_pos)
         midpoints = self.logic.cone_midpoints(blue_cones, yellow_cones)
 
         target = self.logic.Interpolation(midpoints)
@@ -228,10 +228,10 @@ class Logic_module:
             bx, bz, _ = blue_cones[i]
             yx, yz, _ = yellow_cones[i]
 
-            mx = (bx+yx) / 2
-            mz = (bz+yz) / 2
+            x = (bx+yx) / 2
+            z = (bz+yz) / 2
 
-            midpoints.append((mx, mz))
+            midpoints.append((x, z))
         return midpoints
 
     def Interpolation(self, midpoints):
