@@ -185,6 +185,17 @@ class Perception_Module:
         contour_centers = self.contour_center_finder(contours_y, contours_b, color_array)
         cone_positions, color_array = self.contour_control(contour_centers, color_array)
         world_pos, color_array = self.world_positioning(cone_positions, depth_frame,depth_intrin, color_array)
+        blue_cones, yellow_cones = self.logic.cone_sorting(world_cones)
+        midpoints = self.logic.cone_midpoints(blue_cones, yellow_cones)
+
+        target = self.logic.Interpolation(midpoints)
+        if target is not None:
+            steering = self.logic.streering_angle(target)
+            # for now: just print it so you see it works
+            print(f"Target: {target}, steering angle: {steering:.3f} rad")
+        else:
+            print("No target found (no midpoints)")
+
         cv.imshow("thresh", color_array)
         cv.imshow("thres", clean_mask_y)
         if cv.waitKey(1) & 0xFF == ord('q'):
