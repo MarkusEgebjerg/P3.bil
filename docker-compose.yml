@@ -1,0 +1,10 @@
+version: "3.8"
+services:
+  realsense:
+    build: .
+    container_name: realsense_app
+    privileged: true
+    devices:
+      - "/dev/bus/usb:/dev/bus/usb"
+    volumes:
+      - .:/app
