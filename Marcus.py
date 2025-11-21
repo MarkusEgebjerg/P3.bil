@@ -165,7 +165,7 @@ class Perception_Module:
 
             if Z < 6:
 
-                world_cones.append((X, Z, color))
+                world_cones.append((X, Z, color, u, v))
                 cv2.circle(color_array, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
                 cv2.putText(color_array, f" c: {(cone_positions[i][2])} coo: {[X, Z]}", (int(u), int(v)),
                             cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
@@ -184,21 +184,21 @@ class Perception_Module:
         contours_y, contours_b = self.contour_finder(clean_mask_y, clean_mask_b)
         contour_centers = self.contour_center_finder(contours_y, contours_b, color_array)
         cone_positions, color_array = self.contour_control(contour_centers, color_array)
-        world_pos, color_array = self.world_positioning(cone_positions, depth_frame,depth_intrin, color_array)
+        world_pos, color_array= self.world_positioning(cone_positions, depth_frame,depth_intrin, color_array)
         blue_cones, yellow_cones = self.logic.cone_sorting(world_pos)
-        midpoints = self.logic.cone_midpoints(blue_cones, yellow_cones)
+        midpoints = self.logic.cone_midpoints(blue_cones, yellow_cones, color_array)
 
         target = self.logic.Interpolation(midpoints)
         if target is not None:
             steering = self.logic.streering_angle(target)
             # for now: just print it so you see it works
-            print(f"Target: {target}, steering angle: {steering:.3f} rad")
+            print(f"Target: {target}, steering angle: {steering:.3f} deg")
         else:
             print("No target found (no midpoints)")
 
         cv.imshow("thresh", color_array)
         cv.imshow("thres", clean_mask_y)
-        if cv.waitKey(1) & 0xFF == ord('q'):
+        if cv.waitKey(200) & 0xFF == ord('q'):
             return False
 
         return True
@@ -209,9 +209,9 @@ class Perception_Module:
 
 class Logic_module:
     def __init__(self):
-        self.l = 30
-        self.WD = 29.5
-
+        self.l = 0.5
+        self.WD = 0.3
+        self.max_p = 4
 
     def cone_sorting(self, world_cones):
         blue_cones = [c for c in world_cones if c[2] == "Blue"]
@@ -221,59 +221,68 @@ class Logic_module:
         yellow_cones.sort(key=lambda c: c[1])
         return blue_cones, yellow_cones
 
-    def cone_midpoints(self, blue_cones, yellow_cones, max_p= 4):
+    def cone_midpoints(self, blue_cones, yellow_cones, color_array):
         midpoints = []
-        n = min(len(blue_cones), len(yellow_cones), max_p)
+        n = min(len(blue_cones), len(yellow_cones), self.max_p)
         for i in range(n):
-            bx, bz, _ = blue_cones[i]
-            yx, yz, _ = yellow_cones[i]
+            bx, bz, _, bu, bv = blue_cones[i]
+            yx, yz, _, yu, yv = yellow_cones[i]
 
             x = (bx+yx) / 2
             z = (bz+yz) / 2
 
-            midpoints.append((x, z))
+            u = int ((bu+yu)/2)
+            v = int ((bv+yv) / 2)
+
+            cv2.circle(color_array, (u,v), 4, (0, 255, 0), -1)
+            cv2.putText(color_array, f" coo: {[round(x,2), round(z,2)]}", (u,v), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
+            midpoints.append((x,z))
         return midpoints
 
     def Interpolation(self, midpoints):
-        x,z = zip(*midpoints)
-
-        x = list(x)
-        z = list(z)
 
 
-        def length(x, z):
-            len = np.sqrt(x**2 + z**2)
-            return len
+        if len(midpoints) > 0:
+            x = sorted([x[0] for x in midpoints])
+            z = sorted([x[1] for x in midpoints])
+            for i in range(len(z)): z[i] = z[i]+self.WD
+            def length(x, z):
+                len = np.sqrt(x**2 + z**2)
+                return len
 
-        if length(x[0], z[0]) >= self.l:
+            if length(x[0], z[0]) >= self.l:
 
-            s = self.l / (np.sqrt(x[0]**2 + z[0] ** 2))
-            target = (s*x[0], s*z[0])  # target point for pure pursuit
+                s = self.l / (np.sqrt(x[0]**2 + z[0] ** 2))
+                target = (s*x[0], s*z[0])  # target point for pure pursuit
 
 
-        else:
-            # uden fugleflugt
-            # rest_l = l-length(x[0], z[0])
-            # s = rest_l/(np.sqrt(x[0]2 + z[0]2))
-            # target  = (c[0][0] + sc[1][0], c[0][1] + sc[1][1]) #target point for pure pursuit
+            elif length(x[0], z[0]) < self.l:
+                # uden fugleflugt
+                # rest_l = l-length(x[0], z[0])
+                # s = rest_l/(np.sqrt(x[0]2 + z[0]2))
+                # target  = (c[0][0] + sc[1][0], c[0][1] + sc[1][1]) #target point for pure pursuit
 
-            # fugleflugt
-            A = x[1]**2 + z[1]**2
-            B = 2*(x[0] * x[1] + z[0] * z[1])
-            C = x[0]**2 + z[0]*2 - self.l**2
-            D = B**2 - (4*A*C)
-            if D >= 0:
-                s_plus = (-B + np.sqrt(D)) / (2*A)
-                s_minus = (-B - np.sqrt(D)) / (2*A)
-                positive_s = [s for s in (s_plus, s_minus) if s > 0]
-                s = positive_s
-                target = (x[0] + s[0] * x[1], z[0] + s[0] * z[1])  # target point for pure pursuit
+                # fugleflugt
+                A = x[1]**2 + z[1]**2
+                B = 2*(x[0] * x[1] + z[0] * z[1])
+                C = x[0]**2 + z[0]*2 - self.l**2
+                D = B**2 - (4*A*C)
+                if D >= 0:
+                    s_plus = (-B + np.sqrt(D)) / (2*A)
+                    s_minus = (-B - np.sqrt(D)) / (2*A)
+                    positive_s = [s for s in (s_plus, s_minus) if s > 0]
+                    s = positive_s
+                    target = (np.float64(x[0] + s[0] * x[1]), np.float64(z[0] + s[0] * z[1]))  # target point for pure pursuit
 
-        return target
+
+
+            return target
 
     def streering_angle(self, target):
         r = self.l**2 / (target[0]*2)
-        steeringangle = math.atan2(self.WD/r)
+        steeringangle = np.arctan(self.WD/r)
+        steeringangle = np.rad2deg(steeringangle)
+
         return steeringangle
 
 
