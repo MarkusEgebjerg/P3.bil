@@ -3,6 +3,209 @@ import cv2 as cv
 import numpy as np
 import pyrealsense2 as rs
 import math
+import matplotlib.pyplot as plt
+
+# Enable interactive plotting so the window updates every frame
+plt.ion()
+
+
+class Logic_module:
+    def __init__(self):
+        # Lookahead distance [m]
+        self.l = 0.5
+        # Wheelbase [m]
+        self.WD = 0.3
+        # Max cone pairs used
+        self.max_p = 4
+
+        # Figure for top-down plot
+        self.fig, self.ax = plt.subplots()
+
+    def cone_sorting(self, world_cones):
+        # world_cones: (X, Z, color, u, v)
+        blue_cones = [c for c in world_cones if c[2] == "Blue"]
+        yellow_cones = [c for c in world_cones if c[2] == "Yellow"]
+
+        # sort by Z (forward)
+        blue_cones.sort(key=lambda c: c[1])
+        yellow_cones.sort(key=lambda c: c[1])
+        return blue_cones, yellow_cones
+
+    def cone_midpoints(self, blue_cones, yellow_cones, color_array):
+        """
+        Compute midpoints in world coordinates (X,Z)
+        and draw their image positions (u,v) on color_array.
+        """
+        midpoints = []
+        n = min(len(blue_cones), len(yellow_cones), self.max_p)
+
+        for i in range(n):
+            # unpack cones: (X, Z, color, u, v)
+            bx, bz, _, bu, bv = blue_cones[i]
+            yx, yz, _, yu, yv = yellow_cones[i]
+
+            # world midpoint for logic
+            x = (bx + yx) / 2.0
+            z = (bz + yz) / 2.0
+
+            # image midpoint for drawing
+            u = int((bu + yu) / 2.0)
+            v = int((bv + yv) / 2.0)
+
+            # draw midpoint on image
+            cv2.circle(color_array, (u, v), 4, (0, 255, 0), -1)
+            cv2.putText(
+                color_array,
+                f" coo: [{round(x, 2)}, {round(z, 2)}]",
+                (u, v),
+                cv2.FONT_HERSHEY_DUPLEX,
+                0.5,
+                (0, 0, 255),
+            )
+
+            midpoints.append((x, z))
+
+        return midpoints
+
+    def Interpolation(self, midpoints):
+        """
+        Very simple lookahead target selection in world frame (X,Z).
+        Uses first one/two midpoints.
+        Returns: (tx, tz) or None
+        """
+        if len(midpoints) == 0:
+            return None
+
+        # Only one midpoint visible: aim at it (or scaled to lookahead)
+        if len(midpoints) == 1:
+            x0, z0 = midpoints[0]
+
+            def length(xx, zz):
+                return np.sqrt(xx**2 + zz**2)
+
+            d0 = length(x0, z0)
+            if d0 < 1e-6:
+                return None
+
+            # shift z by WD (like you did)
+            z0_shift = z0 + self.WD
+
+            if d0 >= self.l:
+                s = self.l / d0
+                target = (s * x0, s * z0_shift)
+            else:
+                target = (x0, z0_shift)
+
+            return target
+
+        # Two or more midpoints
+        # Beware: sorting x and z separately breaks pairing, but I'm keeping your behavior.
+        x = sorted([p[0] for p in midpoints])
+        z = sorted([p[1] for p in midpoints])
+
+        # shift all z by WD
+        for i in range(len(z)):
+            z[i] = z[i] + self.WD
+
+        def length(xx, zz):
+            return np.sqrt(xx**2 + zz**2)
+
+        target = None
+
+        # Case 1: first midpoint is farther than lookahead -> scale back
+        if length(x[0], z[0]) >= self.l:
+            s = self.l / (np.sqrt(x[0] ** 2 + z[0] ** 2))
+            target = (s * x[0], s * z[0])
+
+        # Case 2: inside lookahead -> try "fugleflugt" stuff between 0 and 1
+        else:
+            if len(x) >= 2:
+                A = x[1] ** 2 + z[1] ** 2
+                B = 2 * (x[0] * x[1] + z[0] * z[1])
+                C = x[0] ** 2 + z[0] * 2 - self.l ** 2
+                D = B ** 2 - (4 * A * C)
+                if D >= 0:
+                    s_plus = (-B + np.sqrt(D)) / (2 * A)
+                    s_minus = (-B - np.sqrt(D)) / (2 * A)
+                    positive_s = [s for s in (s_plus, s_minus) if s > 0]
+                    if len(positive_s) > 0:
+                        s = positive_s[0]
+                        target = (
+                            float(x[0] + s * x[1]),
+                            float(z[0] + s * z[1]),
+                        )
+
+        return target
+
+    def streering_angle(self, target):
+        """
+        Simple pure-pursuit-ish steering angle from target (x,z).
+        """
+        # avoid crash if x == 0
+        if abs(target[0]) < 1e-6:
+            return 0.0
+
+        r = self.l**2 / (target[0] * 2.0)
+        steeringangle = np.arctan(self.WD / r)
+        steeringangle = np.rad2deg(steeringangle)
+        return steeringangle
+
+    def debug_plot(self, blue_cones, yellow_cones, midpoints, target):
+        """
+        Top-down plot in world coordinates (X,Z):
+        - Car at (0,0)
+        - Blue cones
+        - Yellow cones
+        - Midpoints
+        - Target
+        """
+        self.ax.clear()
+
+        # Car
+        self.ax.scatter(0, 0, c='black', marker='x', s=80, label='Car')
+
+        # Blue cones
+        if len(blue_cones) > 0:
+            bx = [c[0] for c in blue_cones]
+            bz = [c[1] for c in blue_cones]
+            self.ax.scatter(bx, bz, c='blue', s=60, marker='o', label='Blue cones')
+
+        # Yellow cones
+        if len(yellow_cones) > 0:
+            yx = [c[0] for c in yellow_cones]
+            yz = [c[1] for c in yellow_cones]
+            self.ax.scatter(yx, yz, c='gold', s=60, marker='o', label='Yellow cones')
+
+        # Midpoints
+        if len(midpoints) > 0:
+            mx = [m[0] for m in midpoints]
+            mz = [m[1] for m in midpoints]
+            self.ax.scatter(mx, mz, c='green', s=80, marker='x', label='Midpoints')
+
+        # Target
+        if target is not None:
+            tx, tz = target
+            self.ax.scatter(tx, tz, c='red', s=150, marker='*', label='Target')
+
+        # Axis labels
+        self.ax.set_xlabel("X [m]")
+        self.ax.set_ylabel("Z [m]")
+        self.ax.set_title("Top-Down Track Plot")
+
+        # Auto scale to include all points
+        self.ax.set_aspect('equal', adjustable='datalim')
+        self.ax.relim()
+        self.ax.autoscale_view()
+
+        # Legend
+        handles, labels = self.ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        if by_label:
+            self.ax.legend(by_label.values(), by_label.keys(), loc='upper right')
+
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
+        plt.pause(0.001)
 
 
 class Perception_Module:
@@ -33,7 +236,7 @@ class Perception_Module:
 
         self.spatial = rs.spatial_filter()
 
-    # ------------ Perception helpers ------------
+        self.logic = Logic_module()
 
     def get_frame(self):
         frameset = self.pipe.wait_for_frames()
@@ -65,20 +268,13 @@ class Perception_Module:
 
     def color_space_conversion(self, color_frame):
         color_array = np.asanyarray(color_frame.get_data())
+        res_y, res_x = color_array.shape[:2]
+        color_array = color_array[res_y // 2:res_y, 0:res_x]
         frame_HSV = cv2.cvtColor(color_array, cv2.COLOR_BGR2HSV)
         return frame_HSV, color_array
 
-    def Cropping(self,frame_HSV, color_array):
-        # ---- CROP TO BOTTOM HALF ----
-        h, w = frame_HSV.shape[:2]
-        y_offset = h // 2  # start row of bottom half
-
-        frame_HSV_crop = frame_HSV[y_offset:h, 0:w]
-        color_crop = color_array[y_offset:h, 0:w]
-        return frame_HSV_crop, color_crop, y_offset
-
     def mask_clean(self, mask):
-        mask_Open = cv2.erode(mask, self.kernel, iterations=3)
+        mask_Open = cv2.erode(mask, self.kernel, iterations=2)
         mask_Close = cv2.dilate(mask_Open, self.kernel, iterations=10)
         return mask_Close
 
@@ -96,8 +292,7 @@ class Perception_Module:
         return contours_y, contours_b
 
     def contour_center_finder(self, contours_y, contours_b, color_array):
-        # fresh per call
-        contour_centers = []
+        self.contour_centers = []
         for i in range(2):
             lst = contours_b
             if i == 1:
@@ -105,69 +300,58 @@ class Perception_Module:
 
             for contour in lst:
                 area = cv2.contourArea(contour)
-                if area < 60:
+                if area < 30:
                     continue
 
                 epsilon = 0.04 * cv2.arcLength(contour, True)
                 approx = cv2.approxPolyDP(contour, epsilon, True)
 
                 M = cv2.moments(contour)
-                if M['m00'] == 0:
-                    continue
                 cx = int(M['m10'] / M['m00'])
                 cy = int(M['m01'] / M['m00'])
-
                 if i == 1:
-                    current_center = (cx, cy, "Yellow")
+                    self.current_center = (cx, cy, "Yellow")
                 else:
-                    current_center = (cx, cy, "Blue")
-                contour_centers.append(current_center)
+                    self.current_center = (cx, cy, "Blue")
+                self.contour_centers.append(self.current_center)
 
                 if len(approx) > 3:
                     cv2.drawContours(color_array, [approx], 0, (255, 0, 0), 5)
 
-        return contour_centers
+        return self.contour_centers
 
     def contour_control(self, contour_centers, color_array):
-        cone_positions = []
+        self.cone_positions = []
+
         for i in range(0, len(contour_centers)):
             p = 0
             for j in range(0, len(contour_centers)):
-
                 if (
                     i != j
                     and -self.afvig < (contour_centers[i][0] - contour_centers[j][0]) < self.afvig
                     and contour_centers[i][1] < contour_centers[j][1]
                 ):
-                    cone_positions.append(contour_centers[i])
+                    # upper contour
+                    self.cone_positions.append(contour_centers[i])
 
                 if (
                     i != j
-                    and (
-                        -self.afvig > (contour_centers[i][0] - contour_centers[j][0])
-                        or self.afvig < (contour_centers[i][0] - contour_centers[j][0])
-                    )
+                    and (-self.afvig > (contour_centers[i][0] - contour_centers[j][0])
+                         or self.afvig < (contour_centers[i][0] - contour_centers[j][0]))
                 ):
-                    p = p + 1
+                    p += 1
                     if p >= len(contour_centers) - 1:
-                        cone_positions.append(contour_centers[i])
-        return cone_positions, color_array
+                        # standing alone
+                        self.cone_positions.append(contour_centers[i])
 
-
+        return self.cone_positions, color_array
 
     def world_positioning(self, cone_positions, depth_frame, depth_intrin, color_array):
-        """
-        Convert image-space cone centers to world coordinates.
-        Returns:
-            color_array_with_text, world_cones
-        where world_cones is a list of (u, v, X, Y, Z, color)
-        """
         world_cones = []
-
         for i in range(0, len(cone_positions)):
-            u = float(cone_positions[i][0])  # pixel x
-            v = float(cone_positions[i][1])  # pixel y
-            depth_m = float(depth_frame.get_distance(int(u), int(v)))
+            u = float(cone_positions[i][0])
+            v = float(cone_positions[i][1])
+            depth_m = float(depth_frame.get_distance(int(u), int(v) + 360))
             if depth_m <= 0:
                 continue
 
@@ -175,25 +359,24 @@ class Perception_Module:
             X = round(X, 2)
             Y = round(Y, 2)
             Z = round(Z, 2)
+
             color = cone_positions[i][2]
 
-            world_cones.append((u, v, X, Y, Z, color))
+            if Z < 6:
+                world_cones.append((X, Z, color, u, v))
+                cv2.circle(color_array, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
+                cv2.putText(
+                    color_array,
+                    f" c: {cone_positions[i][2]} coo: {[X, Z]}",
+                    (int(u), int(v)),
+                    cv2.FONT_HERSHEY_DUPLEX,
+                    0.5,
+                    (0, 0, 255),
+                )
 
-            cv2.circle(color_array, (int(u), int(v)), 4, (255, 255, 255), -1)
-            cv2.putText(
-                color_array,
-                f" c:{color} coo:[{X}, {Z}]",
-                (int(u), int(v)),
-                cv2.FONT_HERSHEY_DUPLEX,
-                0.5,
-                (0, 0, 255)
-            )
+        return world_cones, color_array
 
-        return color_array, world_cones
-
-    # ------------ Perception main step ------------
-
-    def run(self, logic_module):
+    def run(self):
         depth_frame, color_frame = self.get_frame()
         if depth_frame is None:
             return True
@@ -201,24 +384,27 @@ class Perception_Module:
         depth_intrin = self.update_intrinsics(depth_frame)
         depth_frame = self.spatial_filter(depth_frame)
         frame_HSV, color_array = self.color_space_conversion(color_frame)
-        frame_HSV_crop, color_crop, y_offset = self.Cropping(frame_HSV,color_array)
-        clean_mask_y, clean_mask_b = self.color_detector(frame_HSV_crop)
+        clean_mask_y, clean_mask_b = self.color_detector(frame_HSV)
         contours_y, contours_b = self.contour_finder(clean_mask_y, clean_mask_b)
-        contour_centers_crop = self.contour_center_finder(contours_y, contours_b, color_crop)
+        contour_centers = self.contour_center_finder(contours_y, contours_b, color_array)
+        cone_positions, color_array = self.contour_control(contour_centers, color_array)
+        world_pos, color_array = self.world_positioning(cone_positions, depth_frame, depth_intrin, color_array)
+        blue_cones, yellow_cones = self.logic.cone_sorting(world_pos)
+        midpoints = self.logic.cone_midpoints(blue_cones, yellow_cones, color_array)
 
-        # Shift contour centers back to full-image coordinates
-        contour_centers = [
-            (cx, cy + y_offset, col) for (cx, cy, col) in contour_centers_crop
-        ]
+        target = self.logic.Interpolation(midpoints)
+        if target is not None:
+            steering = self.logic.streering_angle(target)
+            print(f"Target: {target}, steering angle: {steering:.3f} deg")
+        else:
+            print("No target found (no midpoints)")
 
-        cone_positions, _ = self.contour_control(contour_centers, color_array)
-        world_img, world_cones = self.world_positioning(cone_positions, depth_frame, depth_intrin, color_array)
+        # Top-down debug plot
+        self.logic.debug_plot(blue_cones, yellow_cones, midpoints, target)
 
-        # Logic module: pair cones, compute midpoints, draw them
-        output_img, midpoints_world = logic_module.update(world_cones, world_img)
-
-        cv.imshow("thresh", output_img)
-        if cv.waitKey(1) & 0xFF == ord('q'):
+        cv.imshow("thresh", color_array)
+        cv.imshow("thres", clean_mask_y)
+        if cv.waitKey(200) & 0xFF == ord('q'):
             return False
 
         return True
@@ -228,51 +414,6 @@ class Perception_Module:
         cv.destroyAllWindows()
 
 
-class Logic_Module:
-    def update(self, world_cones, img):
-        img, midpoints_world = self.pair_and_draw_midpoints(world_cones, img)
-        # later you can return midpoints_world to motor control
-        return img, midpoints_world
-
-    def pair_and_draw_midpoints(self, world_cones, img):
-        # Separate cones by color
-        blue_cones = [c for c in world_cones if c[5] == "Blue"]
-        yellow_cones = [c for c in world_cones if c[5] == "Yellow"]
-
-        # Sort each list by forward distance Z (index 4)
-        blue_cones.sort(key=lambda c: c[4])
-        yellow_cones.sort(key=lambda c: c[4])
-
-        n_pairs = min(len(blue_cones), len(yellow_cones))
-        midpoints_world = []  # (midX, midZ)
-
-        for i in range(n_pairs):
-            ub, vb, Xb, Yb, Zb, cb = blue_cones[i]
-            uy, vy, Xy, Yy, Zy, cy = yellow_cones[i]
-
-            # Midpoint in world coordinates (X/Z plane)
-            midX = (Xb + Xy) / 2.0
-            midZ = (Zb + Zy) / 2.0
-            midpoints_world.append((midX, midZ))
-
-            # Midpoint in image space for drawing
-            mid_u = (ub + uy) / 2.0
-            mid_v = (vb + vy) / 2.0
-
-            cv2.circle(img, (int(mid_u), int(mid_v)), 6, (0, 255, 0), -1)
-            cv2.putText(
-                img,
-                "MID",
-                (int(mid_u) + 5, int(mid_v)),
-                cv2.FONT_HERSHEY_DUPLEX,
-                0.5,
-                (0, 255, 0),
-                1
-            )
-
-        return img, midpoints_world
-
-
 def main():
     try:
         perception = Perception_Module()
@@ -280,11 +421,9 @@ def main():
         print(e)
         return
 
-    logic = Logic_Module()
-
     try:
         while True:
-            keep_running = perception.run(logic)
+            keep_running = perception.run()
             if not keep_running:
                 break
     finally:
