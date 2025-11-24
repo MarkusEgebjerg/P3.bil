@@ -196,15 +196,15 @@ class Perception_Module:
         else:
             print("No target found (no midpoints)")
 
-        cv.imshow("thresh", color_array)
-        if cv.waitKey(1) & 0xFF == ord('q'):
+        cv2.imshow("thresh", color_array)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
             return False
 
         return True
 
     def shutdown(self):
         self.pipe.stop()
-        cv.destroyAllWindows()
+        cv2.destroyAllWindows()
 
 class Logic_module:
     def __init__(self):
