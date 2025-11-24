@@ -6,7 +6,7 @@ on:
       - main   # change to the branch(es) you want
 
 env:
-  IMAGE: your-docker-username/p3-bil   # change to your Docker Hub repo
+  IMAGE: tonton04/p3-bil   # change to your Docker Hub repo
 
 jobs:
   build-and-push:
