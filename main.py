@@ -4,6 +4,8 @@ import numpy as np
 import pyrealsense2 as rs
 import math
 
+print("Starting...")
+
 pipe = rs.pipeline()
 cfg = rs.config()
 res_x = 1280
