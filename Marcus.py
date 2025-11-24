@@ -2,7 +2,6 @@ import cv2
 import cv2 as cv
 import numpy as np
 import pyrealsense2 as rs
-import math
 
 
 class Perception_Module:
@@ -198,7 +197,7 @@ class Perception_Module:
 
         cv.imshow("thresh", color_array)
         cv.imshow("thres", clean_mask_y)
-        if cv.waitKey(200) & 0xFF == ord('q'):
+        if cv.waitKey(1) & 0xFF == ord('q'):
             return False
 
         return True
