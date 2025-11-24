@@ -142,6 +142,8 @@ class Perception_Module:
                     if p >= len(contour_centers) - 1:
                         #cv2.circle(color_array, (contour_centers[i][0], contour_centers[i][1]), 4, (255, 255, 255), -1)
                         self.cone_positions.append(contour_centers[i])  # contour gemmes hvis den står alane
+                if len(contour_centers) == 1:
+                    self.cone_positions.append(contour_centers[i])  # contour gemmes hvis den står alane
         return self.cone_positions, color_array
 
     def world_positioning(self, cone_positions, depth_frame,depth_intrin,color_array):
@@ -196,7 +198,6 @@ class Perception_Module:
             print("No target found (no midpoints)")
 
         cv.imshow("thresh", color_array)
-        cv.imshow("thres", clean_mask_y)
         if cv.waitKey(1) & 0xFF == ord('q'):
             return False
 
