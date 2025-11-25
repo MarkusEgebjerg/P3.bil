@@ -286,14 +286,6 @@ class Logic_module:
 
 
 
-
-
-
-
-
-
-
-
 def main():
     try:
         perception= Perception_Module()
