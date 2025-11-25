@@ -28,7 +28,7 @@ class Perception_Module:
         self.upperBlue = np.array([135, 255, 255])
 
         self.z_window_size = 5  # how many past Z values to remember
-        self.z_history = []  # list of recent Z values
+        self.z_histories = {}  # list of recent Z values
 
 
         self.kernel = np.ones((2, 3))
@@ -175,18 +175,15 @@ class Perception_Module:
                 continue
 
             X, Y, Z = rs.rs2_deproject_pixel_to_point(depth_intrin, [u, v], depth_m)
-
+            color = cone_positions[i][2]
             key = (color, int(u // 10), int(v // 10))
             Z = self.smooth_z(key,Z)
 
             X = round(X, 2)
             Y = round(Y, 2)
             Z = round(Z, 2)
-
-
-
             print(Z)
-            color = cone_positions[i][2]
+
 
             if Z < 6:
 
