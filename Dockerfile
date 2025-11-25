@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y \
     libgtk2.0-dev \
     libcanberra-gtk-module \
     libcanberra-gtk3-module \
-    install RPi.GPIO \
+    Jetson.GPIO \
     && rm -rf /var/lib/apt/lists/*
 
 # -------------------------------------------------------
