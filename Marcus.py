@@ -94,24 +94,22 @@ class Perception_Module:
         contours_y, _ = cv2.findContours(clean_mask_y, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         return contours_y, contours_b
 
-
-    def smooth_z(self, new_z: float):
+    def smooth_z(self, key, new_z: float) -> float:
         """
-        Add a new Z value and return the rolling average over the last N values.
+        Smooth Z per cone key (e.g. per (color, u_bin, v_bin)).
+        Keeps a rolling window of the last N values for that cone.
         """
-        # Ignore invalid values just in case
         if new_z <= 0:
             return new_z
 
-        self.z_history.append(new_z)
+        history = self.z_histories.get(key, [])
+        history.append(new_z)
 
-        # Keep only the last N
-        if len(self.z_history) > self.z_window_size:
-            self.z_history.pop(0)
+        if len(history) > self.z_window_size:
+            history.pop(0)
 
-        # Return average of current window
-        return sum(self.z_history) / len(self.z_history)
-
+        self.z_histories[key] = history
+        return sum(history) / len(history)
 
     def contour_center_finder(self, contours_y, contours_b,color_array): #finds contour center and draws contour
         self.contour_centers = []
@@ -178,7 +176,8 @@ class Perception_Module:
 
             X, Y, Z = rs.rs2_deproject_pixel_to_point(depth_intrin, [u, v], depth_m)
 
-            Z = self.smooth_z(Z)
+            key = (color, int(u // 10), int(v // 10))
+            Z = self.smooth_z(key,Z)
 
             X = round(X, 2)
             Y = round(Y, 2)
