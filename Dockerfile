@@ -2,8 +2,7 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# -------------------------------------------------------
-# System dependencies (OpenCV, RealSense, Python)
+# System dependencies
 # -------------------------------------------------------
 RUN apt-get update && apt-get install -y \
     curl \
@@ -19,20 +18,17 @@ RUN apt-get update && apt-get install -y \
     libgtk2.0-dev \
     libcanberra-gtk-module \
     libcanberra-gtk3-module \
-    Jetson.GPIO \
     && rm -rf /var/lib/apt/lists/*
 
-# -------------------------------------------------------
-# Install Node.js (you had this in your Dockerfile)
+# Install Node.js
 # -------------------------------------------------------
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# -------------------------------------------------------
 # Python packages (OpenCV, NumPy, RealSense)
 # -------------------------------------------------------
-RUN pip3 install opencv-python numpy pyrealsense2
+RUN pip3 install opencv-python numpy pyrealsense2 RPi.GPIO
 
 # -------------------------------------------------------
 # Copy your application
