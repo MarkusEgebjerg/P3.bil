@@ -1,6 +1,47 @@
 import cv2
 import numpy as np
 import pyrealsense2 as rs
+import RPi.GPIO as GPIO
+import time
+
+
+output_pins = {
+    'JETSON_XAVIER': 18,
+    'JETSON_NANO': 33,
+    'JETSON_NX': 33,
+    'CLARA_AGX_XAVIER': 18,
+    'JETSON_TX2_NX': 32,
+    'JETSON_ORIN': 18,
+    'JETSON_ORIN_NX': 33,
+    'JETSON_ORIN_NANO': 33
+}
+output_pin = output_pins.get(GPIO.model, None)
+if output_pin is None:
+    raise Exception('PWM not supported on this board')
+
+def run_pwm_test(pin):
+    print(f"Starting PWM test on pin {pin}. Press Ctrl+C to stop.")
+    # Set pin as an output pin with optional initial state of HIGH
+    GPIO.setup(pin, GPIO.OUT, initial=GPIO.HIGH)
+    p = GPIO.PWM(pin, 50)
+    val = 25
+    incr = 5
+    p.start(val)
+    try:
+        while True:
+            time.sleep(0.25)
+            if val >= 100:
+                incr = -incr
+            if val <= 0:
+                incr = -incr
+            val += incr
+            p.ChangeDutyCycle(val)
+            print(f"Duty Cycle: {val}")
+    except KeyboardInterrupt:
+        print("Test stopped by user")
+    finally:
+        p.stop()
+        GPIO.cleanup()
 
 
 class Perception_Module:
@@ -287,6 +328,13 @@ class Logic_module:
 
 
 def main():
+    # Pin Setup:
+    # Board pin-numbering scheme
+    GPIO.setmode(GPIO.BOARD)
+
+    # run the standalone PWM test
+    run_pwm_test(output_pin)
+
     try:
         perception= Perception_Module()
     except RuntimeError as e:
