@@ -200,8 +200,6 @@ class Perception_Module:
             Y = round(Y, 2)
             Z = round(Z, 2)
 
-
-
             color = cone_positions[i][2]
 
             if Z < 6:
@@ -333,6 +331,7 @@ def main():
     GPIO.setmode(GPIO.BOARD)
 
     # run the standalone PWM test
+    print("run pwm test")
     run_pwm_test(output_pin)
 
     try:
