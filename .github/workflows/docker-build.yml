@@ -3,7 +3,7 @@ name: Build and Push Docker Image
 on:
   push:
     branches:
-      - GPIO   # change to the branch(es) you want
+      - main   # change to the branch(es) you want
 
 env:
   IMAGE: tonton04/p3-bil   # change to your Docker Hub repo
