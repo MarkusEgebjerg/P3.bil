@@ -10,7 +10,8 @@ class LogicModule:
     def cone_sorting(self, world_cones):
         blue = [c for c in world_cones if c[2] == "Blue"]
         yellow = [c for c in world_cones if c[2] == "Yellow"]
-        blue.sort(key=lambda c: c[1])   # sort by Z (distance)
+
+        blue.sort(key=lambda c: c[1])   # sort by distance (z)
         yellow.sort(key=lambda c: c[1])
         return blue, yellow
 
