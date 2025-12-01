@@ -3,7 +3,7 @@ $ xhost +local:docker
 ```
 
 ```
-'$ sudo docker container run -it --rm \
+$ sudo docker container run -it --rm \
   --runtime=nvidia --gpus all \
   --privileged \
   -e DISPLAY=$DISPLAY \
