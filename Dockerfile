@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     libcanberra-gtk3-module \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js
+
 # -------------------------------------------------------
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \

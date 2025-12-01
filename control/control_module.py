@@ -30,11 +30,11 @@ class ControlModule:
                         incr = -incr
                     val += incr
                     self.pwm.ChangeDutyCycle(val)
-            finally:
-                self.pwm.stop()
-                # GPIO.JETSON_INFO is a dictionary, do not call it like a function ()
-                print(GPIO.JETSON_INFO)
-                GPIO.cleanup()
+        finally:
+            self.pwm.stop()
+            # GPIO.JETSON_INFO is a dictionary, do not call it like a function ()
+            print(GPIO.JETSON_INFO)
+            GPIO.cleanup()
 
 
 
