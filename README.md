@@ -1,6 +1,9 @@
+```
 $ xhost +local:docker
+```
 
-$ sudo docker container run -it --rm \
+```
+'$ sudo docker container run -it --rm \
   --runtime=nvidia --gpus all \
   --privileged \
   -e DISPLAY=$DISPLAY \
@@ -9,3 +12,5 @@ $ sudo docker container run -it --rm \
   -v /proc/device-tree/chosen:/proc/device-tree/chosen \
   --device /dev/gpiochip0 \
   tonton04/p3-bil:latest
+```
+  
