@@ -3,6 +3,9 @@ $ xhost +local:docker
 ```
 
 ```
+sudo docker pull tonton04/p3-bil:latest
+```
+```
 sudo docker run -it --rm \
 --runtime nvidia \
 --network host \
