@@ -1,9 +1,11 @@
 import cv2
 import numpy as np
 import pyrealsense2 as rs
+from logic.logic_module import LogicModule
 
 class PerceptionModule():
     def __init__(self):
+        self.logic = LogicModule()
         # --- RealSense Setup ---
         self.pipe = rs.pipeline()
         self.cfg = rs.config()
@@ -21,6 +23,9 @@ class PerceptionModule():
         self.depth_sensor = self.stream.get_device().first_depth_sensor()
         self.depth_scale = self.depth_sensor.get_depth_scale()
         self.depth_intrin = None
+
+        self.pipe = rs.pipeline()
+
 
 
         # --- Color Detection Settings ---
@@ -169,7 +174,7 @@ class PerceptionModule():
     def run(self):
         depth_frame, color_frame = self.get_frame()
         if depth_frame is None:
-            return True
+            return [], None
 
         depth_intrin = self.update_intrinsics(depth_frame)
         depth_frame = self.spatial_filter(depth_frame)
@@ -178,13 +183,14 @@ class PerceptionModule():
         contours_y, contours_b = self.find_contour(clean_mask_y, clean_mask_b)
         contour_centers = self.find_centers(contours_y, contours_b, img)
         cone_positions, img = self.contour_control(contour_centers, img)
-        world_pos, img= self.world_positioning(cone_positions, depth_frame,depth_intrin, img)
+
+        world_pos, img = self.world_positioning(cone_positions, depth_frame, depth_intrin, img)
         blue_cones, yellow_cones = self.logic.cone_sorting(world_pos)
         midpoints = self.logic.cone_midpoints(blue_cones, yellow_cones, img)
 
         target = self.logic.Interpolation(midpoints)
         if target is not None:
-            steering = self.logic.streering_angle(target)
+            steering = self.logic.steering_angle(target)
             # for now: just print it so you see it works
             print(f"Target: {target}, steering angle: {steering:.3f} deg")
         else:
@@ -192,9 +198,9 @@ class PerceptionModule():
 
         cv2.imshow("thresh", img)
         if cv2.waitKey(1) & 0xFF == ord('q'):
-            return False
+            return [], None
 
-        return True
+        return world_pos, img
 
     def shutdown(self):
         self.pipe.stop()

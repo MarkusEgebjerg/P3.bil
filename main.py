@@ -10,13 +10,13 @@ def main():
     while True:
         cones_world, img = perception.run()
 
-        blue, yellow = logic.cone_sorting(cones_world)
-        midpoints = logic.cone_midpoints(blue, yellow, img)
-        target = logic.Interpolation(midpoints)
+        #blue, yellow = logic.cone_sorting(cones_world)
+        #midpoints = logic.cone_midpoints(blue, yellow, img)
+        #target = logic.Interpolation(midpoints)
 
-        if target:
-            angle = logic.streering_angle(target)
-            control.set_steering(angle)
+        #if target:
+        #    angle = logic.streering_angle(target)
+        #    control.set_steering(angle)
 
         control.show_debug(img)
 

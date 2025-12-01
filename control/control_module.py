@@ -1,4 +1,4 @@
-import RPi.GPIO as GPIO
+import Jetson.GPIO as GPIO
 import time
 import cv2
 
@@ -13,6 +13,29 @@ class ControlModule:
         GPIO.setup(self.pwm_pin, GPIO.OUT, initial=GPIO.LOW)
         self.pwm = GPIO.PWM(self.pwm_pin, self.pwm_freq)
         self.pwm.start(0.0)
+        print()
+
+
+    def servo_control(self, duty):
+        self.pwm.ChangeDutyCycle(duty)
+        print("PWM running. Press CTRL+C to exit.")
+        val = 150
+        incr = 5
+        try:
+                while True:
+                    time.sleep(0.25)
+                    if val >= 200:
+                        incr = -incr
+                    if val <= 100:
+                        incr = -incr
+                    val += incr
+                    self.pwm.ChangeDutyCycle(val)
+            finally:
+                self.pwm.stop()
+                # GPIO.JETSON_INFO is a dictionary, do not call it like a function ()
+                print(GPIO.JETSON_INFO)
+                GPIO.cleanup()
+
 
 
     def show_debug(self, img, window_name="debug"):
