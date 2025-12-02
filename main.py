@@ -4,17 +4,6 @@ from control.control_module import ControlModule
 from control.motor_Driver import MotorDriverHW039
 import time
 
-import Jetson.GPIO as GPIO
-import time
-
-GPIO.setmode(GPIO.BOARD)
-GPIO.setup(32, GPIO.OUT)
-pwm = GPIO.PWM(32, 1000)
-pwm.start(50)
-time.sleep(2)
-pwm.stop()
-GPIO.cleanup()
-
 
 def main():
 #    perception = PerceptionModule()
