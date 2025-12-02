@@ -20,7 +20,7 @@ class MotorDriverHW039:
         board_mode=GPIO.BOARD
 
     ):
-        Print(GPIO.BOARD)
+        print(GPIO.BOARD)
 
         self.rpwm_pin = rpwm_pin
         self.lpwm_pin = lpwm_pin
@@ -30,7 +30,7 @@ class MotorDriverHW039:
 
         GPIO.setmode(board_mode)
         mode = GPIO.getmode()
-        Print(mode)
+        print(mode)
                 
 
         # Enable pins
