@@ -20,7 +20,7 @@ class MotorDriverHW039:
     ):
         print(f"Jetson Model: {GPIO.model}")
         print(GPIO.BOARD)
-
+        GPIO.setwarnings(False)
         self.rpwm_pin = rpwm_pin
         self.lpwm_pin = lpwm_pin
         self.R_EN = R_EN
