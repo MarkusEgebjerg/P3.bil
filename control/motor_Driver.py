@@ -62,6 +62,17 @@ class MotorDriverHW039:
 
         # Direction method sets which PWM is active.
 
+    def accelerate(self, duty):
+        self.set_speed(duty)
+        self.r_pwm.ChangeDutyCycle(0)
+        self.l_pwm.ChangeDutyCycle(0)
+        for i in range(duty):
+            self.r_pwm.ChangeDutyCycle(i)
+            self.current_speed = i
+            print(i)
+        self.direction = "forward"
+
+
     def forward(self, duty=100):
         self.stop()
 
@@ -89,31 +100,67 @@ class MotorDriverHW039:
         self.current_speed = duty
 
     def brake(self):
-        # Soft brake: ramp down speed
-        for d in range(self.current_speed, -1, -10):
-            if self.direction == "forward":
-                self.r_pwm.ChangeDutyCycle(d)
-            elif self.direction == "reverse":
-                self.l_pwm.ChangeDutyCycle(d)
-            time.sleep(0.01)
+        """Soft brake by ramping down speed, safely handling PWM state."""
+        if self.direction not in ["forward", "reverse"]:
+            return  # nothing to brake
 
+        try:
+            # Determine which PWM to ramp down
+            pwm_to_ramp = self.r_pwm if self.direction == "forward" else self.l_pwm
+
+            # Ramp down speed safely
+            for d in range(self.current_speed, -1, -10):
+                try:
+                    pwm_to_ramp.ChangeDutyCycle(d)
+                except Exception as e:
+                    print(f"Ignoring ChangeDutyCycle error during brake: {e}")
+                time.sleep(0.01)
+
+        except Exception as e:
+            print(f"Ignoring unexpected error in brake(): {e}")
+
+        # Ensure motors are fully stopped
         self.stop()
 
     def stop(self):
-        # Stop PWM output
-        self.r_pwm.ChangeDutyCycle(0)
-        self.l_pwm.ChangeDutyCycle(0)
+        """Safely stop PWM outputs without crashing if PWM is already stopped."""
+        for pwm_attr in ["r_pwm", "l_pwm"]:
+            pwm = getattr(self, pwm_attr, None)
+            if pwm:
+                try:
+                    pwm.ChangeDutyCycle(0)
+                except Exception as e:
+                    print(f"Ignoring ChangeDutyCycle error for {pwm_attr} in stop(): {e}")
+
         self.direction = "stop"
         self.current_speed = 0
 
-    # ----------------------------- CLEANUP ------------------------------------
+    #  CLEANUP
 
     def cleanup(self):
-        self.stop()
+        # Stop motors
         try:
-            self.r_pwm.stop()
-            self.l_pwm.stop()
-        except:
-            pass
+            self.stop()
+        except Exception as e:
+            print(f"Ignoring stop() error during cleanup: {e}")
 
-        GPIO.cleanup()
+        # Stop PWM
+        for pwm_attr in ["r_pwm", "l_pwm"]:
+            pwm = getattr(self, pwm_attr, None)
+            if pwm:
+                try:
+                    pwm.stop()
+                except Exception as e:
+                    print(f"Ignoring PWM stop error for {pwm_attr}: {e}")
+
+        # Cleanup GPIO
+        try:
+            GPIO.cleanup()
+        except OSError as e:
+            if e.errno == 9:
+                # Bad file descriptor; safe to ignore in Docker/PWM cases
+                print("Ignoring OSError 9 during GPIO.cleanup()")
+            else:
+                raise
+        except Exception as e:
+            print(f"Ignoring unexpected GPIO cleanup error: {e}")
