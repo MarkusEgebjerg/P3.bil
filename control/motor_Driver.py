@@ -70,6 +70,7 @@ class MotorDriverHW039:
             self.r_pwm.ChangeDutyCycle(i)
             self.current_speed = i
             print(i)
+            time.sleep(0.02)
         self.direction = "forward"
 
 

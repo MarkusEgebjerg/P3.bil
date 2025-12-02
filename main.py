@@ -12,12 +12,16 @@ def main():
     motor = MotorDriverHW039()   # your pin setup is loaded here
 
     try:
+        print("Starting...")
+        motor.accelerate(99)
+        time.sleep(1)
+
         print("Forward 50%...")
-        motor.forward(500)
+        motor.forward(90)
         time.sleep(2)
 
         print("Reverse 50%...")
-        motor.reverse(500)
+        motor.reverse(90)
         time.sleep(2)
 
         print("Braking...")

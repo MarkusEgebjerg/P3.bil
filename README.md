@@ -1,5 +1,5 @@
 ```
-$ xhost +local:docker
+ssh -v jetson@192.168.55.1
 ```
 
 ```
