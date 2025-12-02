@@ -1,8 +1,6 @@
 import Jetson.GPIO as GPIO
 import time
 
-from sympy.codegen import Print
-
 
 class MotorDriverHW039:
     """
@@ -20,6 +18,7 @@ class MotorDriverHW039:
         board_mode=GPIO.BOARD
 
     ):
+        print(f"Jetson Model: {GPIO.model}")
         print(GPIO.BOARD)
 
         self.rpwm_pin = rpwm_pin
