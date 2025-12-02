@@ -28,7 +28,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
 
 # Python packages (OpenCV, NumPy, RealSense)
 # -------------------------------------------------------
-RUN pip3 install opencv-python numpy pyrealsense2 Jetson.GPIO
+RUN pip3 install opencv-python numpy pyrealsense2 Jetson.GPIO time
 
 # -------------------------------------------------------
 # Copy your application

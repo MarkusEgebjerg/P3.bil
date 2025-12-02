@@ -10,30 +10,35 @@ class MotorDriverHW039:
 
     def __init__(
         self,
-        rpwm_pin=32,
-        lpwm_pin=33,
-        enable_pin=33,       # If unused: set to None
+        rpwm_pin=32,   # PWM pin
+        lpwm_pin=33,   # PWM pin
+        R_EN=29,       # digital output
+        L_EN=31,       # digital output
         pwm_freq=1000,
         board_mode=GPIO.BOARD
     ):
         self.rpwm_pin = rpwm_pin
         self.lpwm_pin = lpwm_pin
-        self.enable_pin = enable_pin
+        self.R_EN = R_EN
+        self.L_EN = L_EN
         self.pwm_freq = pwm_freq
 
         GPIO.setmode(board_mode)
 
-        # Direction pins
+        # Enable pins
+        GPIO.setup(self.R_EN, GPIO.OUT, initial=GPIO.HIGH)
+        GPIO.setup(self.L_EN, GPIO.OUT, initial=GPIO.HIGH)
+
+        # PWM pins
         GPIO.setup(self.rpwm_pin, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(self.lpwm_pin, GPIO.OUT, initial=GPIO.LOW)
 
-        # Optional enable pin + PWM
-        if self.enable_pin is not None:
-            GPIO.setup(self.enable_pin, GPIO.OUT, initial=GPIO.LOW)
-            self.pwm = GPIO.PWM(self.enable_pin, self.pwm_freq)
-            self.pwm.start(0)
-        else:
-            self.pwm = None
+        # PWM objects (each side has its own PWM)
+        self.r_pwm = GPIO.PWM(self.rpwm_pin, self.pwm_freq)
+        self.l_pwm = GPIO.PWM(self.lpwm_pin, self.pwm_freq)
+
+        self.r_pwm.start(0)
+        self.l_pwm.start(0)
 
         self.current_speed = 0
         self.direction = "stop"
@@ -42,63 +47,62 @@ class MotorDriverHW039:
 
     def set_speed(self, duty):
         """
-        Set speed using PWM (0-100).
+        Update stored duty cycle (0–100), but actual output
+        depends on direction method.
         """
         duty = max(0, min(100, duty))
         self.current_speed = duty
 
-        if self.pwm is not None:
-            self.pwm.ChangeDutyCycle(duty)
+        # Direction method sets which PWM is active.
 
     def forward(self, duty=100):
-        """
-        Rotate motor forward.
-        """
-        self.stop()  # always stop before direction change
-        GPIO.output(self.rpwm_pin, GPIO.HIGH)
-        GPIO.output(self.lpwm_pin, GPIO.LOW)
+        self.stop()
 
-        self.set_speed(duty)
+        GPIO.output(self.R_EN, GPIO.HIGH)
+        GPIO.output(self.L_EN, GPIO.HIGH)
+
+        # Forward: RPWM high PWM, LPWM low
+        self.r_pwm.ChangeDutyCycle(duty)
+        self.l_pwm.ChangeDutyCycle(0)
+
         self.direction = "forward"
+        self.current_speed = duty
 
     def reverse(self, duty=100):
-        """
-        Rotate motor backward.
-        """
         self.stop()
-        GPIO.output(self.rpwm_pin, GPIO.LOW)
-        GPIO.output(self.lpwm_pin, GPIO.HIGH)
 
-        self.set_speed(duty)
+        GPIO.output(self.R_EN, GPIO.HIGH)
+        GPIO.output(self.L_EN, GPIO.HIGH)
+
+        # Reverse: LPWM high PWM, RPWM low
+        self.r_pwm.ChangeDutyCycle(0)
+        self.l_pwm.ChangeDutyCycle(duty)
+
         self.direction = "reverse"
+        self.current_speed = duty
 
     def brake(self):
-        """
-        Electronic braking (both sides HIGH).
-        """
-        GPIO.output(self.rpwm_pin, GPIO.HIGH)
-        GPIO.output(self.lpwm_pin, GPIO.HIGH)
-        self.set_speed(0)
+        # Both PWM high = electronic braking
+        self.r_pwm.ChangeDutyCycle(100)
+        self.l_pwm.ChangeDutyCycle(100)
         self.direction = "brake"
+        self.current_speed = 0
 
     def stop(self):
-        """
-        Disable both direction pins.
-        """
-        GPIO.output(self.rpwm_pin, GPIO.LOW)
-        GPIO.output(self.lpwm_pin, GPIO.LOW)
-        if self.pwm is not None:
-            self.pwm.ChangeDutyCycle(0)
+        # Stop PWM output
+        self.r_pwm.ChangeDutyCycle(0)
+        self.l_pwm.ChangeDutyCycle(0)
         self.direction = "stop"
+        self.current_speed = 0
 
     # ----------------------------- CLEANUP ------------------------------------
 
     def cleanup(self):
         self.stop()
-        if self.pwm is not None:
-            try:
-                self.pwm.stop()
-            except:
-                pass
-        GPIO.cleanup()
+        try:
+            self.r_pwm.stop()
+            self.l_pwm.stop()
+        except:
+            pass
 
+        GPIO.cleanup()
