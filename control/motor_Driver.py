@@ -82,11 +82,15 @@ class MotorDriverHW039:
         self.current_speed = duty
 
     def brake(self):
-        # Both PWM high = electronic braking
-        self.r_pwm.ChangeDutyCycle(100)
-        self.l_pwm.ChangeDutyCycle(100)
-        self.direction = "brake"
-        self.current_speed = 0
+        # Soft brake: ramp down speed
+        for d in range(self.current_speed, -1, -10):
+            if self.direction == "forward":
+                self.r_pwm.ChangeDutyCycle(d)
+            elif self.direction == "reverse":
+                self.l_pwm.ChangeDutyCycle(d)
+            time.sleep(0.01)
+
+        self.stop()
 
     def stop(self):
         # Stop PWM output
