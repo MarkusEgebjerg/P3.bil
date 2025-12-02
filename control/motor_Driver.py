@@ -155,6 +155,9 @@ class MotorDriverHW039:
 
         # Cleanup GPIO
         try:
+            # disenable pins
+            GPIO.setup(self.R_EN, GPIO.OUT, initial=GPIO.LOW)
+            GPIO.setup(self.L_EN, GPIO.OUT, initial=GPIO.LOW)
             GPIO.cleanup()
         except OSError as e:
             if e.errno == 9:
