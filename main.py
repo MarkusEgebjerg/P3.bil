@@ -13,11 +13,11 @@ def main():
 
     try:
         print("Forward 50%...")
-        motor.forward(50)
+        motor.forward(500)
         time.sleep(2)
 
         print("Reverse 50%...")
-        motor.reverse(50)
+        motor.reverse(500)
         time.sleep(2)
 
         print("Braking...")
