@@ -1,7 +1,7 @@
 from perception.perception_module import PerceptionModule
 from logic.logic_module import LogicModule
 from control.control_module import ControlModule
-from drivers.motor_driver_hw039 import MotorDriverHW039
+from control.motor_Driver import MotorDriverHW039
 import time
 
 
