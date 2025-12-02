@@ -6,9 +6,9 @@ import time
 
 
 def main():
-    perception = PerceptionModule()
-    logic = LogicModule()
-    control = ControlModule()
+#    perception = PerceptionModule()
+#    logic = LogicModule()
+#"    control = ControlModule()
     motor = MotorDriverHW039()   # your pin setup is loaded here
 
     try:
