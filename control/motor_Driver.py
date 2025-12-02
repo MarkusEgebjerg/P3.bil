@@ -1,6 +1,8 @@
 import RPi.GPIO as GPIO
 import time
 
+from sympy.codegen import Print
+
 
 class MotorDriverHW039:
     """
@@ -16,7 +18,10 @@ class MotorDriverHW039:
         L_EN=31,       # digital output
         pwm_freq=1000,
         board_mode=GPIO.BOARD
+
     ):
+        Print(GPIO.BOARD)
+
         self.rpwm_pin = rpwm_pin
         self.lpwm_pin = lpwm_pin
         self.R_EN = R_EN
@@ -24,6 +29,9 @@ class MotorDriverHW039:
         self.pwm_freq = pwm_freq
 
         GPIO.setmode(board_mode)
+        mode = GPIO.getmode()
+        Print(mode)
+                
 
         # Enable pins
         GPIO.setup(self.R_EN, GPIO.OUT, initial=GPIO.HIGH)
