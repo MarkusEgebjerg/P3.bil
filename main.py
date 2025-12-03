@@ -14,23 +14,23 @@ def main():
     try:
         print("Starting...")
         motor.accelerate(99)
-        time.sleep(1)
+        time.sleep(5)
 
         print("Forward 50%...")
         motor.forward(90)
-        time.sleep(2)
+        time.sleep(3)
 
         print("Reverse 50%...")
         motor.reverse(90)
-        time.sleep(2)
+        time.sleep(3)
 
         print("Braking...")
         motor.brake()
-        time.sleep(1)
+        time.sleep(2)
 
         print("Stopping...")
         motor.stop()
-        time.sleep(1)
+        time.sleep(2)
 
     except KeyboardInterrupt:
         print("Interrupted")
