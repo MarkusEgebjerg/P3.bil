@@ -2,6 +2,7 @@ from perception.perception_module import PerceptionModule
 from logic.logic_module import LogicModule
 from control.control_module import ControlModule
 from control.motor_Driver import MotorDriverHW039
+from control.PWM_Diagnostic_Tool import pinDiagnostic
 import time
 
 
@@ -10,34 +11,19 @@ def main():
 #    logic = LogicModule()
 #    control = ControlModule()
     motor = MotorDriverHW039()   # your pin setup is loaded here
+    testPWM = pinDiagnostic()
 
     try:
         print("Starting...")
-        motor.accelerate(99)
-        time.sleep(5)
-
-        print("Forward 50%...")
-        motor.forward(90)
-        time.sleep(3)
-
-        print("Reverse 50%...")
-        motor.reverse(90)
-        time.sleep(3)
-
-        print("Braking...")
-        motor.brake()
-        time.sleep(2)
-
-        print("Stopping...")
-        motor.stop()
-        time.sleep(2)
+        testPWM.main()
+        #motor.test_motor_driver()
 
     except KeyboardInterrupt:
         print("Interrupted")
 
     finally:
         print("Cleanup GPIO")
-        motor.cleanup()
+        #motor.cleanup()
     #while True:
         #cones_world, img = perception.run()
 

@@ -1,334 +1,311 @@
+#!/usr/bin/env python
+"""
+HW-039 Motor Driver using SINGLE PWM pin
+"""
+
 import Jetson.GPIO as GPIO
 import time
 
 
 class MotorDriverHW039:
     """
-    HW-039 / BTS7960 High-Power Motor Driver Controller
-    using Jetson.GPIO
+    HW-039 / BTS7960 Motor Driver with single PWM pin
 
-    FIXED VERSION - addresses PWM output issues
+    Pin Configuration:
+    - One PWM pin (33) controls speed
+    - Two digital pins (32, 35) control direction via RPWM/LPWM
+    - Two enable pins (29, 31) enable the driver
     """
 
     def __init__(
             self,
-            rpwm_pin=32,  # PWM pin for forward
-            lpwm_pin=33,  # PWM pin for reverse
-            R_EN=29,  # Right enable (digital output)
-            L_EN=31,  # Left enable (digital output)
-            pwm_freq=100,  # REDUCED from 1000 to 100 Hz for better motor driver compatibility
+            pwm_pin=33,  # Hardware PWM pin (speed control)
+            dir_pin_r=32,  # Direction control - forward
+            dir_pin_l=35,  # Direction control - reverse
+            R_EN=29,  # Right enable
+            L_EN=31,  # Left enable
+            pwm_freq=100,
             board_mode=GPIO.BOARD
     ):
         print(f"Jetson Model: {GPIO.model}")
-        print(f"GPIO Mode: {GPIO.BOARD}")
         GPIO.setwarnings(False)
 
-        self.rpwm_pin = rpwm_pin
-        self.lpwm_pin = lpwm_pin
+        self.pwm_pin = pwm_pin
+        self.dir_pin_r = dir_pin_r
+        self.dir_pin_l = dir_pin_l
         self.R_EN = R_EN
         self.L_EN = L_EN
         self.pwm_freq = pwm_freq
 
         # Set board mode
         GPIO.setmode(board_mode)
-        mode = GPIO.getmode()
-        print(f"Current GPIO mode: {mode}")
+        print(f"GPIO Mode: {GPIO.getmode()}")
 
-        # Setup Enable pins FIRST (and keep them HIGH)
+        # Setup enable pins (always HIGH when in use)
         GPIO.setup(self.R_EN, GPIO.OUT, initial=GPIO.HIGH)
         GPIO.setup(self.L_EN, GPIO.OUT, initial=GPIO.HIGH)
-        print(f"Enable pins {R_EN} and {L_EN} set to HIGH")
+        print(f"Enable pins {R_EN}, {L_EN} set to HIGH")
 
-        # Setup PWM pins
-        GPIO.setup(self.rpwm_pin, GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(self.lpwm_pin, GPIO.OUT, initial=GPIO.LOW)
-        print(f"PWM pins {rpwm_pin} and {lpwm_pin} initialized")
+        # Setup direction control pins (digital outputs)
+        GPIO.setup(self.dir_pin_r, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(self.dir_pin_l, GPIO.OUT, initial=GPIO.LOW)
+        print(f"Direction pins {dir_pin_r}, {dir_pin_l} initialized")
 
-        # Create PWM objects
-        self.r_pwm = GPIO.PWM(self.rpwm_pin, self.pwm_freq)
-        self.l_pwm = GPIO.PWM(self.lpwm_pin, self.pwm_freq)
-
-        # Start PWM at 0% duty cycle
-        self.r_pwm.start(0)
-        self.l_pwm.start(0)
-        print(f"PWM started at {pwm_freq} Hz")
+        # Setup PWM pin (hardware PWM for speed)
+        GPIO.setup(self.pwm_pin, GPIO.OUT, initial=GPIO.LOW)
+        self.pwm = GPIO.PWM(self.pwm_pin, self.pwm_freq)
+        self.pwm.start(0)
+        print(f"PWM started on pin {pwm_pin} at {pwm_freq} Hz")
 
         self.current_speed = 0
         self.direction = "stop"
 
     # ----------------------------- CONTROL METHODS -----------------------------
 
-    def set_speed(self, duty):
-        """Update stored duty cycle (0–100)"""
-        duty = max(0, min(100, duty))
-        self.current_speed = duty
-
-    def accelerate(self, target_duty, ramp_time=2.0):
+    def forward(self, speed=50):
         """
-        Gradually accelerate to target duty cycle
+        Drive forward
+        Args:
+            speed: 0-100 (duty cycle percentage)
+        """
+        speed = max(0, min(100, speed))
+
+        # Set direction: RPWM=HIGH, LPWM=LOW
+        GPIO.output(self.dir_pin_r, GPIO.HIGH)
+        GPIO.output(self.dir_pin_l, GPIO.LOW)
+
+        # Set speed via PWM
+        self.pwm.ChangeDutyCycle(speed)
+
+        self.direction = "forward"
+        self.current_speed = speed
+        print(f"Forward: {speed}%")
+
+    def reverse(self, speed=50):
+        """
+        Drive in reverse
+        Args:
+            speed: 0-100 (duty cycle percentage)
+        """
+        speed = max(0, min(100, speed))
+
+        # Set direction: RPWM=LOW, LPWM=HIGH
+        GPIO.output(self.dir_pin_r, GPIO.LOW)
+        GPIO.output(self.dir_pin_l, GPIO.HIGH)
+
+        # Set speed via PWM
+        self.pwm.ChangeDutyCycle(speed)
+
+        self.direction = "reverse"
+        self.current_speed = speed
+        print(f"Reverse: {speed}%")
+
+    def accelerate(self, target_speed, ramp_time=2.0, direction="forward"):
+        """
+        Gradually accelerate to target speed
 
         Args:
-            target_duty: Target speed (0-100)
-            ramp_time: Time in seconds to reach target speed
+            target_speed: Target speed (0-100)
+            ramp_time: Time to reach target
+            direction: "forward" or "reverse"
         """
-        target_duty = max(0, min(100, target_duty))
+        target_speed = max(0, min(100, target_speed))
 
-        # Ensure we're starting fresh
-        self.r_pwm.ChangeDutyCycle(0)
-        self.l_pwm.ChangeDutyCycle(0)
+        # Set direction first
+        if direction == "forward":
+            GPIO.output(self.dir_pin_r, GPIO.HIGH)
+            GPIO.output(self.dir_pin_l, GPIO.LOW)
+        else:
+            GPIO.output(self.dir_pin_r, GPIO.LOW)
+            GPIO.output(self.dir_pin_l, GPIO.HIGH)
 
-        # Calculate step parameters
+        # Ramp up speed
         steps = 50
         step_delay = ramp_time / steps
-        duty_increment = target_duty / steps
 
-        print(f"Accelerating to {target_duty}% over {ramp_time}s")
+        print(f"Accelerating {direction} to {target_speed}%")
 
         for step in range(steps + 1):
-            current_duty = duty_increment * step
-            self.r_pwm.ChangeDutyCycle(current_duty)
-            self.current_speed = current_duty
+            current_speed = (target_speed * step) / steps
+            self.pwm.ChangeDutyCycle(current_speed)
 
-            if step % 10 == 0:  # Print every 10th step
-                print(f"Speed: {current_duty:.1f}%")
+            if step % 10 == 0:
+                print(f"  Speed: {current_speed:.1f}%")
 
             time.sleep(step_delay)
 
-        self.direction = "forward"
-        print(f"Acceleration complete: {target_duty}%")
+        self.direction = direction
+        self.current_speed = target_speed
+        print(f"Acceleration complete: {target_speed}%")
 
-    def forward(self, duty=50):
+    def brake(self, brake_time=0.5):
         """
-        Drive forward at specified duty cycle
+        Gradual deceleration to stop
 
         Args:
-            duty: Speed (0-100), default 50%
+            brake_time: Time to brake in seconds
         """
-        duty = max(0, min(100, duty))
-
-        print(f"Forward at {duty}%")
-
-        # Ensure enables are HIGH
-        GPIO.output(self.R_EN, GPIO.HIGH)
-        GPIO.output(self.L_EN, GPIO.HIGH)
-
-        # Forward: RPWM active, LPWM off
-        self.r_pwm.ChangeDutyCycle(duty)
-        self.l_pwm.ChangeDutyCycle(0)
-
-        self.direction = "forward"
-        self.current_speed = duty
-
-    def reverse(self, duty=50):
-        """
-        Drive in reverse at specified duty cycle
-
-        Args:
-            duty: Speed (0-100), default 50%
-        """
-        duty = max(0, min(100, duty))
-
-        print(f"Reverse at {duty}%")
-
-        # Ensure enables are HIGH
-        GPIO.output(self.R_EN, GPIO.HIGH)
-        GPIO.output(self.L_EN, GPIO.HIGH)
-
-        # Reverse: LPWM active, RPWM off
-        self.r_pwm.ChangeDutyCycle(0)
-        self.l_pwm.ChangeDutyCycle(duty)
-
-        self.direction = "reverse"
-        self.current_speed = duty
-
-    def brake(self, ramp_down_time=0.5):
-        """
-        Soft brake by ramping down speed
-
-        Args:
-            ramp_down_time: Time in seconds to brake
-        """
-        if self.direction not in ["forward", "reverse"]:
-            return  # Nothing to brake
+        if self.current_speed == 0:
+            return
 
         print(f"Braking from {self.current_speed}%")
 
-        try:
-            # Determine which PWM to ramp down
-            pwm_to_ramp = self.r_pwm if self.direction == "forward" else self.l_pwm
+        steps = 20
+        step_delay = brake_time / steps
 
-            # Ramp down in steps
-            steps = 20
-            step_delay = ramp_down_time / steps
+        for i in range(steps, -1, -1):
+            speed = (self.current_speed * i) / steps
+            self.pwm.ChangeDutyCycle(speed)
+            time.sleep(step_delay)
 
-            for i in range(steps, -1, -1):
-                duty = (self.current_speed * i) / steps
-                try:
-                    pwm_to_ramp.ChangeDutyCycle(duty)
-                except Exception as e:
-                    print(f"Error during brake: {e}")
-                time.sleep(step_delay)
-
-        except Exception as e:
-            print(f"Unexpected error in brake(): {e}")
-
-        # Full stop
         self.stop()
         print("Brake complete")
 
     def stop(self):
-        """Immediately stop all PWM outputs"""
-        try:
-            self.r_pwm.ChangeDutyCycle(0)
-            self.l_pwm.ChangeDutyCycle(0)
-        except Exception as e:
-            print(f"Error stopping PWM: {e}")
+        """Immediate stop"""
+        # Stop PWM
+        self.pwm.ChangeDutyCycle(0)
+
+        # Set both direction pins LOW
+        GPIO.output(self.dir_pin_r, GPIO.LOW)
+        GPIO.output(self.dir_pin_l, GPIO.LOW)
 
         self.direction = "stop"
         self.current_speed = 0
-        print("Motor stopped")
 
-    def test_pwm_output(self, duration=5):
+    def set_speed(self, speed):
         """
-        Test PWM output by cycling duty cycle
-        Useful for debugging
+        Change speed without changing direction
 
         Args:
-            duration: Test duration in seconds
+            speed: 0-100
         """
-        print(f"\n=== Testing PWM Output for {duration}s ===")
-        print(f"RPWM Pin: {self.rpwm_pin}, LPWM Pin: {self.lpwm_pin}")
-        print(f"R_EN Pin: {self.R_EN}, L_EN Pin: {self.L_EN}")
-        print("Watch for motor movement or measure pins with multimeter/oscilloscope")
+        if self.direction == "stop":
+            print("Warning: Motor is stopped. Use forward() or reverse() first.")
+            return
 
-        # Ensure enables are HIGH
-        GPIO.output(self.R_EN, GPIO.HIGH)
-        GPIO.output(self.L_EN, GPIO.HIGH)
+        speed = max(0, min(100, speed))
+        self.pwm.ChangeDutyCycle(speed)
+        self.current_speed = speed
 
-        start_time = time.time()
-        duty = 0
-        increasing = True
+    # ----------------------------- TEST/DEBUG -----------------------------
+
+    def test_pwm(self, duration=5):
+        """Test PWM output by cycling through speeds"""
+        print(f"\n{'=' * 60}")
+        print(f"Testing PWM on pin {self.pwm_pin}")
+        print(f"Direction pins: {self.dir_pin_r} (R), {self.dir_pin_l} (L)")
+        print(f"{'=' * 60}\n")
 
         try:
-            while (time.time() - start_time) < duration:
-                # Alternate between RPWM and LPWM
-                if (time.time() - start_time) % 2 < 1:
-                    # Test forward (RPWM)
-                    self.r_pwm.ChangeDutyCycle(duty)
-                    self.l_pwm.ChangeDutyCycle(0)
-                    print(f"RPWM: {duty}%, LPWM: 0%")
-                else:
-                    # Test reverse (LPWM)
-                    self.r_pwm.ChangeDutyCycle(0)
-                    self.l_pwm.ChangeDutyCycle(duty)
-                    print(f"RPWM: 0%, LPWM: {duty}%")
+            # Test forward
+            print("Testing FORWARD direction:")
+            GPIO.output(self.dir_pin_r, GPIO.HIGH)
+            GPIO.output(self.dir_pin_l, GPIO.LOW)
 
-                # Ramp duty cycle up and down
-                if increasing:
-                    duty += 10
-                    if duty >= 100:
-                        increasing = False
-                else:
-                    duty -= 10
-                    if duty <= RI 0:
-                        increasing = True
+            for duty in range(0, 101, 20):
+                self.pwm.ChangeDutyCycle(duty)
+                print(f"  Forward: {duty}%")
+                time.sleep(duration / 10)
 
-                time.sleep(0.5)
+            time.sleep(0.5)
+
+            # Test reverse
+            print("\nTesting REVERSE direction:")
+            GPIO.output(self.dir_pin_r, GPIO.LOW)
+            GPIO.output(self.dir_pin_l, GPIO.HIGH)
+
+            for duty in range(0, 101, 20):
+                self.pwm.ChangeDutyCycle(duty)
+                print(f"  Reverse: {duty}%")
+                time.sleep(duration / 10)
+
+            self.stop()
+            print("\nPWM test complete")
 
         except KeyboardInterrupt:
             print("\nTest interrupted")
-        finally:
             self.stop()
-            print("=== Test Complete ===\n")
 
     # ----------------------------- CLEANUP -----------------------------
 
     def cleanup(self):
-        """Clean shutdown of motor driver"""
-        print("Cleaning up motor driver...")
+        """Cleanup GPIO"""
+        print("Cleaning up...")
 
-        # Stop motors
         try:
             self.stop()
-        except Exception as e:
-            print(f"Error during stop in cleanup: {e}")
+            self.pwm.stop()
 
-        # Stop PWM
-        for pwm_attr in ["r_pwm", "l_pwm"]:
-            pwm = getattr(self, pwm_attr, None)
-            if pwm:
-                try:
-                    pwm.stop()
-                    print(f"{pwm_attr} stopped")
-                except Exception as e:
-                    print(f"Error stopping {pwm_attr}: {e}")
-
-        # Disable motor driver
-        try:
+            # Disable motor driver
             GPIO.output(self.R_EN, GPIO.LOW)
             GPIO.output(self.L_EN, GPIO.LOW)
-            print("Enable pins set to LOW")
-        except Exception as e:
-            print(f"Error setting enable pins: {e}")
 
-        # Cleanup GPIO
-        try:
             GPIO.cleanup()
-            print("GPIO cleanup complete")
-        except OSError as e:
-            if e.errno == 9:
-                print("Ignoring OSError 9 during GPIO.cleanup()")
-            else:
-                raise
+            print("Cleanup complete")
+
         except Exception as e:
-            print(f"Error during GPIO cleanup: {e}")
+            print(f"Cleanup error: {e}")
 
 
 # ----------------------------- TEST FUNCTION -----------------------------
 
-def test_motor_driver():
-    """Standalone test function"""
-    print("\n" + "=" * 50)
-    print("HW-039 Motor Driver Test")
-    print("=" * 50 + "\n")
+def test_motor():
+    """Complete motor test sequence"""
+    print("\n" + "=" * 60)
+    print("HW-039 MOTOR DRIVER TEST (Single PWM)")
+    print("=" * 60 + "\n")
 
-    motor = MotorDriverHW039(pwm_freq=100)  # Use 100 Hz
+    motor = MotorDriverHW039(
+        pwm_pin=33,  # Hardware PWM
+        dir_pin_r=32,  # Forward direction
+        dir_pin_l=35,  # Reverse direction
+        R_EN=29,
+        L_EN=31,
+        pwm_freq=100
+    )
 
     try:
-        # Test 1: PWM output test
-        motor.test_pwm_output(duration=10)
+        # Test 1: PWM cycling
+        print("\n--- Test 1: PWM Cycle Test ---")
+        motor.test_pwm(duration=8)
+        time.sleep(1)
 
         # Test 2: Acceleration
-        print("\n--- Test: Acceleration ---")
-        motor.accelerate(60, ramp_time=3)
+        print("\n--- Test 2: Gradual Acceleration ---")
+        motor.accelerate(70, ramp_time=3, direction="forward")
         time.sleep(2)
 
-        # Test 3: Forward
-        print("\n--- Test: Forward 70% ---")
-        motor.forward(70)
-        time.sleep(3)
+        # Test 3: Speed change
+        print("\n--- Test 3: Speed Change ---")
+        motor.set_speed(40)
+        print("Speed reduced to 40%")
+        time.sleep(2)
 
         # Test 4: Brake
-        print("\n--- Test: Brake ---")
-        motor.brake(ramp_down_time=1)
+        print("\n--- Test 4: Braking ---")
+        motor.brake(brake_time=1.5)
         time.sleep(1)
 
         # Test 5: Reverse
-        print("\n--- Test: Reverse 60% ---")
+        print("\n--- Test 5: Reverse ---")
         motor.reverse(60)
         time.sleep(3)
 
         # Test 6: Stop
-        print("\n--- Test: Stop ---")
+        print("\n--- Test 6: Stop ---")
         motor.stop()
-        time.sleep(1)
+
+        print("\n" + "=" * 60)
+        print("All tests complete!")
+        print("=" * 60)
 
     except KeyboardInterrupt:
         print("\n\nTest interrupted by user")
+
     finally:
         motor.cleanup()
-        print("\nTest complete!")
 
 
 if __name__ == "__main__":
-    test_motor_driver()
+    test_motor()
