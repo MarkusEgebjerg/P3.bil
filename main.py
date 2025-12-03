@@ -22,10 +22,14 @@ class Perception_Module:
         self.depth_scale = self.depth_sensor.get_depth_scale()
         self.depth_intrin = None
 
-        self.lowerYellow = np.array([20, 110, 90])
+        self.lowerYellow = np.array([22, 110, 120])
         self.upperYellow = np.array([33, 255, 255])
-        self.lowerBlue = np.array([105, 120, 60])
+        self.lowerBlue = np.array([100, 120, 60])
         self.upperBlue = np.array([135, 255, 255])
+
+        self.z_window_size = 5  # how many past Z values to remember
+        self.z_histories = {}  # list of recent Z values
+
 
         self.kernel = np.ones((2, 3))
         self.afvig = 25
@@ -67,7 +71,7 @@ class Perception_Module:
     def color_space_conversion (self, color_frame):
         color_array = np.asanyarray(color_frame.get_data())
         res_y, res_x = color_array.shape[:2]
-        color_array = color_array[res_y//2:res_y, 0:res_x]
+        color_array = color_array[int(res_y*(1/4)):int(res_y*(3/4)), 0:res_x]
         frame_HSV = cv2.cvtColor(color_array, cv2.COLOR_BGR2HSV)
         return frame_HSV, color_array
 
@@ -90,35 +94,45 @@ class Perception_Module:
         contours_y, _ = cv2.findContours(clean_mask_y, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         return contours_y, contours_b
 
+    def smooth_z(self, key, new_z: float) -> float:
+        """
+        Smooth Z per cone key (e.g. per (color, u_bin, v_bin)).
+        Keeps a rolling window of the last N values for that cone.
+        """
+        if new_z <= 0:
+            return new_z
 
-    def contour_center_finder(self, contours_y, contours_b,color_array): #finds contour center and draws contour
+        history = self.z_histories.get(key, [])
+        history.append(new_z)
+
+        if len(history) > self.z_window_size:
+            history.pop(0)
+
+        self.z_histories[key] = history
+        return sum(history) / len(history)
+
+    def contour_center_finder(self, contours_y, contours_b, color_array):
         self.contour_centers = []
-        for i in range(2):
-            list = contours_b
-            if i == 1:
-                list = contours_y
 
-            for contour in list:
+        for i in range(2):
+            contour_list = contours_b if i == 0 else contours_y
+
+            for contour in contour_list:
                 area = cv2.contourArea(contour)
                 if area < 30:
                     continue
 
-                epsilon = 0.04 * cv2.arcLength(contour, True)
-                approx = cv2.approxPolyDP(contour, epsilon, True)
+                # Bounding box
+                x, y, w, h = cv2.boundingRect(contour)
+                cx = int(x + w / 2)
+                cy = int(y + h / 2)
 
-                M = cv2.moments(contour)
-                cx = int(M['m10'] / M['m00'])
-                cy = int(M['m01'] / M['m00'])
-                if i == 1:
-                    self.current_center = (cx, cy, "Yellow")
-                    self.contour_centers.append(self.current_center)
-                else:
-                    self.current_center = (cx, cy, "Blue")
-                    self.contour_centers.append(self.current_center)
+                color_label = "Blue" if i == 0 else "Yellow"
+                self.current_center = (cx, cy, color_label)
+                self.contour_centers.append(self.current_center)
 
-                # Draw the contour
-                if len(approx) > 3:
-                    cv2.drawContours(color_array, [approx], 0, (255, 0, 0), 5)
+                cv2.rectangle(color_array, (x, y), (x + w, y + h), (255, 0, 0), 2)
+
         return self.contour_centers
 
     def contour_control(self, contour_centers, color_array):
@@ -150,18 +164,21 @@ class Perception_Module:
         for i in range(0, len(cone_positions)):
             u = float(cone_positions[i][0])  # pixel x
             v = float(cone_positions[i][1])  # pixel y
-            depth_m = float(depth_frame.get_distance(int(u), int(v)+360))
+            depth_m = float(depth_frame.get_distance(int(u), int(v)+180))
             if depth_m <= 0:
                 continue
 
             X, Y, Z = rs.rs2_deproject_pixel_to_point(depth_intrin, [u, v], depth_m)
+            color = cone_positions[i][2]
+            key = (color, int(u // 10), int(v // 10))
+            Z = self.smooth_z(key,Z)
+
             X = round(X, 2)
             Y = round(Y, 2)
             Z = round(Z, 2)
+            print(f'Z: {Z}')
+            print(f'X: {X}')
 
-
-
-            color = cone_positions[i][2]
 
             if Z < 6:
 
@@ -169,6 +186,8 @@ class Perception_Module:
                 cv2.circle(color_array, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
                 cv2.putText(color_array, f" c: {(cone_positions[i][2])} coo: {[X, Z]}", (int(u), int(v)),
                             cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
+                cv2.line(color_array, ((1280//2),0),((1280//2),720), (255,255,255),2)
+                cv2.line(color_array, (0,(720//4)), (1280,(720//4)), (255,255,255),2)
 
         return  world_cones, color_array
 
@@ -197,6 +216,8 @@ class Perception_Module:
             print("No target found (no midpoints)")
 
         cv2.imshow("thresh", color_array)
+        cv2.imshow("Yellow", clean_mask_y)
+        cv2.imshow("Blue", clean_mask_b)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             return False
 
