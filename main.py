@@ -1,41 +1,33 @@
 from perception.perception_module import PerceptionModule
 from logic.logic_module import LogicModule
-from control.control_module import ControlModule
-from control.motor_Driver import MotorDriverHW039
-from control.PWM_Diagnostic_Tool import pinDiagnostic
+from control.arduino_interface import ArduinoInterface
 import time
 
 
 def main():
-#    perception = PerceptionModule()
-#    logic = LogicModule()
-#    control = ControlModule()
-    motor = MotorDriverHW039()   # your pin setup is loaded here
-    testPWM = pinDiagnostic()
+    perception = PerceptionModule()
+    logic = LogicModule()
+    arduino = ArduinoInterface("/dev/ttyACM0")
 
     try:
-        print("Starting...")
-        testPWM.main()
-        #motor.test_motor_driver()
+        print("Starting control loop...")
+
+        while True:
+            cones_world, img = perception.run()
+
+            blue, yellow = logic.cone_sorting(cones_world)
+            midpoints = logic.cone_midpoints(blue, yellow, img)
+            target = logic.Interpolation(midpoints)
+
+            angle = logic.steering_angle(target) if target else 0
+            speed = 120  # constant speed
+
+            # Send to Arduino
+            arduino.send(angle, speed)
 
     except KeyboardInterrupt:
-        print("Interrupted")
+        print("Stopped by user")
 
     finally:
-        print("Cleanup GPIO")
-        #motor.cleanup()
-    #while True:
-        #cones_world, img = perception.run()
-
-        #blue, yellow = logic.cone_sorting(cones_world)
-        #midpoints = logic.cone_midpoints(blue, yellow, img)
-        #target = logic.Interpolation(midpoints)
-
-        #if target:
-        #    angle = logic.streering_angle(target)
-        #    control.set_steering(angle)
-
-        #control.show_debug(img)
-
-if __name__ == "__main__":
-    main()
+        arduino.close()
+        print("Arduino connection closed.")
