@@ -18,15 +18,30 @@ class PerceptionModule():
         self.cfg.enable_stream(rs.stream.depth, self.res_x, self.res_y, rs.format.z16, self.fps)
         self.align = rs.align(rs.stream.color)
 
+        # Start streaming
+        print("Starting RealSense pipeline...")
+        try:
+            self.stream = self.pipe.start(self.cfg)
+        except RuntimeError as e:
+            # This sometimes fails if another process holds the camera
+            print(f"ERROR: Failed to start RealSense pipeline. Is the camera in use? Details: {e}")
+            raise
 
-        self.stream = self.pipe.start(self.cfg)
+        # --- Warm-up RealSense pipeline ---
+        # Discard the first few frames to allow auto-exposure/gain to settle and prevent initial timeouts.
+        print("Warming up camera...")
+        for i in range(30):
+            try:
+                # Use a smaller timeout for initialization frames
+                self.pipe.wait_for_frames(timeout_ms=500)
+            except RuntimeError:
+                # Silently fail on timeout during warm-up
+                pass
+
+        #self.stream = self.pipe.start(self.cfg)
         self.depth_sensor = self.stream.get_device().first_depth_sensor()
         self.depth_scale = self.depth_sensor.get_depth_scale()
         self.depth_intrin = None
-
-        #self.pipe = rs.pipeline()
-
-
 
         # --- Color Detection Settings ---
         self.lowerYellow = np.array([20, 110, 90])
