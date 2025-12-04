@@ -19,10 +19,11 @@ def main():
             midpoints = logic.cone_midpoints(blue, yellow, img)
             target = logic.Interpolation(midpoints)
 
-            angle = logic.steering_angle(target) if target else 0
+            angle = logic.steering_angle(target) if target else 0 and print("no targets found")
             speed = 120  # constant speed
 
             # Send to Arduino
+            print(angle)
             arduino.send(angle, speed)
 
     except KeyboardInterrupt:
