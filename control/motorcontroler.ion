@@ -1,0 +1,62 @@
+#include <Servo.h>
+
+Servo steering;
+int servoPin = 9;
+
+int RPWM = 5;  // Digital/PWM pin 5 to the RPWM on the BTS7960
+int LPWM = 6;  // Digital/PWM pin 6 to the LPWM on the BTS7960
+
+// Enable "Left" and "Right" movement
+int L_EN = 7;  // connect Digital/PWM pin 7 to L_EN on the BTS7960
+int R_EN = 8;  // connect Digital/PWM pin 8 to R_EN on the BTS7960
+
+void setup() {
+  Serial.begin(115200);
+  steering.attach(servoPin);
+  // put your setup code here, to run once:
+
+  // initialize all our pins to output
+  for (int i = 5; i < 9; i++) {
+    pinMode(i, OUTPUT);
+  }
+  // set all the pins you want to use to LOW
+  for (int i = 5; i < 9; i++) {
+    digitalWrite(i, LOW);
+  }
+  delay(1000);// wait a second
+  Serial.begin(9600);
+
+  //enable "Right" and "Left" movement on the HBridge
+  // Notice use of digitalWrite to simply turn it on and keep it on.
+  digitalWrite(R_EN, HIGH);
+  digitalWrite(L_EN, HIGH);
+
+}
+
+void loop() {
+  if (Serial.available()) {
+    String data = Serial.readStringUntil('\n');
+
+    int comma = data.indexOf(',');
+    if (comma == -1) return;
+
+    int angle = data.substring(0, comma).toInt();
+    int speed = data.substring(comma + 1).toInt();
+
+    // Servo: convert angle (-30 to +30) → (0 to 180)
+    int servo_val = map(angle, -30, 30, 60, 120);
+    steering.write(servo_val);
+
+    // Motor:
+    if (speed > 0) {
+      analogWrite(LPWM, 0);
+      analogWrite(RPWM, speed);
+    } else if (speed < 0) {
+      analogWrite(RPWM, 0);
+      analogWrite(LPWM, speed);
+    } else {
+      analogWrite(RPWM, 0);
+      analogWrite(LPWM, 0);
+    }
+  }
+}

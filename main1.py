@@ -235,7 +235,7 @@ class Perception_Module:
         else:
             print("No target found (no midpoints)")
 
-        cv2.imshow("thresh", color_array)
+        #cv2.imshow("thresh", color_array)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             return False
 
