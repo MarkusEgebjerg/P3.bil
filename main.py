@@ -1,10 +1,12 @@
 from perception.perception_module import PerceptionModule
 from logic.logic_module import LogicModule
 from control.arduino_interface import ArduinoInterface
-import time
 
 
 def main():
+    print("Starting perception module...")
+    print("Starting logic module...")
+    print("Starting arduino module...")
     perception = PerceptionModule()
     logic = LogicModule()
     arduino = ArduinoInterface("/dev/ttyACM0")
