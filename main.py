@@ -244,15 +244,15 @@ class Logic_module:
         if len(midpoints) > 0:
             x = sorted([x[0] for x in midpoints])
             z = sorted([x[1] for x in midpoints])
-            for i in range(len(z)): z[i] = z[i]+self.WD
+            for i in range(len(z)): z[i] = z[i]+self.WD # adding wheelbase to z depth value to use in pure pursuit
             def length(x, z):
                 len = np.sqrt(x**2 + z**2)
                 return len
 
             if length(x[0], z[0]) >= self.l:
 
-                s = self.l / (np.sqrt(x[0]**2 + z[0] ** 2))
-                target = (s*x[0], s*z[0])  # target point for pure pursuit
+                c = self.l / (np.sqrt(x[0]**2 + z[0] ** 2)) # computing skalar, c
+                target = (c*x[0], c*z[0])  # target point for pure pursuit
 
 
             elif length(x[0], z[0]) < self.l:
@@ -261,9 +261,12 @@ class Logic_module:
                 # s = rest_l/(np.sqrt(x[0]2 + z[0]2))
                 # target  = (c[0][0] + sc[1][0], c[0][1] + sc[1][1]) #target point for pure pursuit
 
-                # fugleflugt
-                A = x[1]**2 + z[1]**2
-                B = 2*(x[0] * x[1] + z[0] * z[1])
+                # fugleflugt________
+                a = x[1]-x[0] # defined for easier following computation
+                b = z[1]-z[0] # defined for easier following computation
+
+                A = a^2 +b^2
+                B = 2(x[0] * a + z[0] * b)
                 C = x[0]**2 + z[0]*2 - self.l**2
                 D = B**2 - (4*A*C)
                 if D >= 0:
