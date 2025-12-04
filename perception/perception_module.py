@@ -24,9 +24,7 @@ class PerceptionModule():
         self.depth_scale = self.depth_sensor.get_depth_scale()
         self.depth_intrin = None
 
-
-
-        self.pipe = rs.pipeline()
+        #self.pipe = rs.pipeline()
 
 
 
