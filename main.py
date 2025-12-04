@@ -34,3 +34,6 @@ def main():
     finally:
         arduino.close()
         print("Arduino connection closed.")
+
+if __name__ == "__main__":
+    main()

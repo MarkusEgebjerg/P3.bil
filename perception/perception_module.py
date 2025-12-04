@@ -26,6 +26,9 @@ class PerceptionModule():
 
 
 
+        self.pipe = rs.pipeline()
+
+
 
         # --- Color Detection Settings ---
         self.lowerYellow = np.array([20, 110, 90])
