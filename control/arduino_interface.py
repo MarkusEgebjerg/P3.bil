@@ -7,13 +7,14 @@ class ArduinoInterface:
         time.sleep(2)
 
     def send(self, steering, speed):
-        steering = int(steering * 10)
-        speed = int(speed * 10)
+        steering = int(steering * 10)  # -300 to 300
+        speed = int(speed)  # 0–255 ONLY
 
         msg = f"{steering},{speed}\n"
         self.ser.write(msg.encode())
 
-        #READ FEEDBACK
+        time.sleep(0.01)  # prevent Arduino overload
+
         try:
             line = self.ser.readline().decode().strip()
             if line:

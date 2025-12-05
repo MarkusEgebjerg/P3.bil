@@ -22,8 +22,8 @@ def main():
             #target = logic.Interpolation(midpoints)
 
             #angle = logic.steering_angle(target) if target else 0 and print("no targets found")
-            speed = 120  # constant speed
-            for x in range(0, speed):
+            speed = 30  # constant speed
+            for x in range(-30, speed):
                 resp = arduino.send(x, 0)
                 print("Sent:", x, "Arduino:", resp)
             # Send to Arduino
