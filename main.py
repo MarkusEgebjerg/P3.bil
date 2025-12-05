@@ -7,26 +7,28 @@ def main():
     print("Starting perception module...")
     print("Starting logic module...")
     print("Starting arduino module...")
-    perception = PerceptionModule()
-    logic = LogicModule()
+    #perception = PerceptionModule()
+    #logic = LogicModule()
     arduino = ArduinoInterface("/dev/ttyACM0")
 
     try:
         print("Starting control loop...")
 
         while True:
-            cones_world, img = perception.run()
+            #cones_world, img = perception.run()
 
-            blue, yellow = logic.cone_sorting(cones_world)
-            midpoints = logic.cone_midpoints(blue, yellow, img)
-            target = logic.Interpolation(midpoints)
+            #blue, yellow = logic.cone_sorting(cones_world)
+            #midpoints = logic.cone_midpoints(blue, yellow, img)
+            #target = logic.Interpolation(midpoints)
 
-            angle = logic.steering_angle(target) if target else 0 and print("no targets found")
+            #angle = logic.steering_angle(target) if target else 0 and print("no targets found")
             speed = 120  # constant speed
-
+            for x in range(0, speed):
+                arduino.send(x, 0)
+                print(x)
             # Send to Arduino
-            print(angle)
-            arduino.send(angle, speed)
+            #print(angle)
+            #arduino.send(angle, speed)
 
     except KeyboardInterrupt:
         print("Stopped by user")

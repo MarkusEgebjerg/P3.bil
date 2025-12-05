@@ -166,7 +166,7 @@ class PerceptionModule():
         for i in range(0, len(cone_positions)):
             u = float(cone_positions[i][0])  # pixel x
             v = float(cone_positions[i][1])  # pixel y
-            depth_m = float(depth_frame.get_distance(int(u), int(v)+360))
+            depth_m = float(depth_frame.get_distance(int(u), int(v)+180))
             if depth_m <= 0:
                 continue
 
