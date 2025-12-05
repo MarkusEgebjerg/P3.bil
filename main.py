@@ -24,8 +24,8 @@ def main():
             #angle = logic.steering_angle(target) if target else 0 and print("no targets found")
             speed = 120  # constant speed
             for x in range(0, speed):
-                arduino.send(x, 0)
-                print(x)
+                resp = arduino.send(x, 0)
+                print("Sent:", x, "Arduino:", resp)
             # Send to Arduino
             #print(angle)
             #arduino.send(angle, speed)
