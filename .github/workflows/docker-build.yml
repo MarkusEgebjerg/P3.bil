@@ -38,7 +38,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          platforms: linux/arm64       # Jetson Nano = ARM64
+          platforms: linux/arm64, linux/amd64       # Jetson Nano = ARM64
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
