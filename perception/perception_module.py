@@ -1,106 +1,147 @@
 import cv2
 import numpy as np
 import pyrealsense2 as rs
-from logic.logic_module import LogicModule
+import logging
 
-class PerceptionModule():
+# Import config
+try:
+    from config import (
+        CAMERA_CONFIG,
+        COLOR_THRESHOLDS,
+        PERCEPTION_CONFIG,
+        MORPHOLOGY_CONFIG,
+        SPATIAL_FILTER
+    )
+except ImportError:
+    # Fallback to default values if config.py not found
+    CAMERA_CONFIG = {'resolution_x': 1280, 'resolution_y': 720, 'fps': 30,
+                     'crop_top_ratio': 0.25, 'crop_bottom_ratio': 0.75}
+    COLOR_THRESHOLDS = {'yellow_lower': [22, 110, 120], 'yellow_upper': [33, 255, 255],
+                        'blue_lower': [100, 120, 60], 'blue_upper': [135, 255, 255]}
+    PERCEPTION_CONFIG = {'min_contour_area': 30, 'neighbor_distance': 25, 'max_depth': 6.0,
+                         'z_smoothing_window': 5, 'depth_offset': 180}
+    MORPHOLOGY_CONFIG = {'kernel_size': (2, 3), 'erosion_iterations': 2, 'dilation_iterations': 10}
+    SPATIAL_FILTER = {'magnitude': 5, 'smooth_alpha': 1, 'smooth_delta': 50, 'holes_fill': 0}
+
+logger = logging.getLogger(__name__)
+
+
+class PerceptionModule:
     def __init__(self):
-        self.logic = LogicModule()
         # --- RealSense Setup ---
         self.pipe = rs.pipeline()
         self.cfg = rs.config()
 
-        self.ptrintmsg = True
-
-        self.res_x = 1280
-        self.res_y = 720
-        self.fps = 30
+        # Use config values
+        self.res_x = CAMERA_CONFIG['resolution_x']
+        self.res_y = CAMERA_CONFIG['resolution_y']
+        self.fps = CAMERA_CONFIG['fps']
 
         self.cfg.enable_stream(rs.stream.color, self.res_x, self.res_y, rs.format.bgr8, self.fps)
         self.cfg.enable_stream(rs.stream.depth, self.res_x, self.res_y, rs.format.z16, self.fps)
         self.align = rs.align(rs.stream.color)
 
         # Start streaming
-        print("Starting RealSense...")
+        logger.info("Starting RealSense camera...")
         try:
             self.stream = self.pipe.start(self.cfg)
         except RuntimeError as e:
-            # This sometimes fails if another process holds the camera
-            print(f"ERROR: Failed to start RealSense pipeline. Is the camera in use? Details: {e}")
+            logger.error(f"Failed to start RealSense pipeline: {e}")
             raise
 
-        # --- Warm-up RealSense ---
-        # Discard the first few frames to allow auto-exposure/gain to settle and prevent initial timeouts.
-        print("Warming up camera...")
+        # --- Warm-up RealSense pipeline ---
+        logger.info("Warming up camera...")
         for i in range(30):
             try:
-                # Use a smaller timeout for initialization frames
                 self.pipe.wait_for_frames(timeout_ms=500)
             except RuntimeError:
-                # Silently fail on timeout during warm-up
                 pass
 
-        #self.stream = self.pipe.start(self.cfg)
         self.depth_sensor = self.stream.get_device().first_depth_sensor()
         self.depth_scale = self.depth_sensor.get_depth_scale()
         self.depth_intrin = None
 
-        # --- Color Detection Settings ---
-        self.lowerYellow = np.array([22, 110, 120])
-        self.upperYellow = np.array([33, 255, 255])
-        self.lowerBlue = np.array([100, 120, 60])
-        self.upperBlue = np.array([135, 255, 255])
+        # --- Color Detection Settings from config ---
+        self.lowerYellow = np.array(COLOR_THRESHOLDS['yellow_lower'])
+        self.upperYellow = np.array(COLOR_THRESHOLDS['yellow_upper'])
+        self.lowerBlue = np.array(COLOR_THRESHOLDS['blue_lower'])
+        self.upperBlue = np.array(COLOR_THRESHOLDS['blue_upper'])
 
-        self.kernel = np.ones((2, 3))
-        self.afvig = 25
+        # --- Perception settings from config ---
+        self.min_contour_area = PERCEPTION_CONFIG['min_contour_area']
+        self.neighbor_distance = PERCEPTION_CONFIG['neighbor_distance']
+        self.max_depth = PERCEPTION_CONFIG['max_depth']
+        self.depth_offset = PERCEPTION_CONFIG['depth_offset']
 
+        # Morphology settings
+        self.kernel = np.ones(MORPHOLOGY_CONFIG['kernel_size'])
+        self.erosion_iter = MORPHOLOGY_CONFIG['erosion_iterations']
+        self.dilation_iter = MORPHOLOGY_CONFIG['dilation_iterations']
+
+        # Image cropping
+        self.crop_top = CAMERA_CONFIG['crop_top_ratio']
+        self.crop_bottom = CAMERA_CONFIG['crop_bottom_ratio']
+
+        # Spatial filter
         self.spatial = rs.spatial_filter()
+        self.spatial_config = SPATIAL_FILTER
 
+        # Z-smoothing
+        self.z_window_size = PERCEPTION_CONFIG['z_smoothing_window']
+        self.z_histories = {}
+
+        logger.info("Perception module initialized successfully")
 
     def get_frame(self):
         frameset = self.pipe.wait_for_frames()
         frames = self.align.process(frameset)
         return frames.get_depth_frame(), frames.get_color_frame()
 
-    def update_intrinsics(self,depth_frame):
+    def update_intrinsics(self, depth_frame):
         if self.depth_intrin is None:
             self.depth_intrin = depth_frame.profile.as_video_stream_profile().get_intrinsics()
         return self.depth_intrin
 
-
     def spatial_filter(self, depth_frame):
+        """Apply spatial filtering using config values"""
         depth_frame = self.spatial.process(depth_frame)
 
-        self.spatial.set_option(rs.option.filter_magnitude, 5)
-        self.spatial.set_option(rs.option.filter_smooth_alpha, 1)
-        self.spatial.set_option(rs.option.filter_smooth_delta, 50)
+        self.spatial.set_option(rs.option.filter_magnitude, self.spatial_config['magnitude'])
+        self.spatial.set_option(rs.option.filter_smooth_alpha, self.spatial_config['smooth_alpha'])
+        self.spatial.set_option(rs.option.filter_smooth_delta, self.spatial_config['smooth_delta'])
         depth_frame = self.spatial.process(depth_frame)
 
-        self.spatial.set_option(rs.option.holes_fill, 0)
+        self.spatial.set_option(rs.option.holes_fill, self.spatial_config['holes_fill'])
         depth_frame = self.spatial.process(depth_frame)
 
         return depth_frame.as_depth_frame()
 
     def color_space_conversion(self, color_frame):
+        """Convert to HSV and crop using config values"""
         color_array = np.asanyarray(color_frame.get_data())
         res_y, res_x = color_array.shape[:2]
-        # Use the working crop from main.py: 1/4 to 3/4 vertically
-        color_array = color_array[int(res_y*(1/4)):int(res_y*(3/4)), 0:res_x]
+
+        # Use config crop ratios
+        crop_start = int(res_y * self.crop_top)
+        crop_end = int(res_y * self.crop_bottom)
+        color_array = color_array[crop_start:crop_end, 0:res_x]
+
         frame_HSV = cv2.cvtColor(color_array, cv2.COLOR_BGR2HSV)
         return frame_HSV, color_array
 
     def mask_clean(self, mask):
-        mask = cv2.erode(mask, self.kernel, iterations=2)
-        mask = cv2.dilate(mask, self.kernel, iterations=10)
+        """Clean mask using config morphology settings"""
+        mask = cv2.erode(mask, self.kernel, iterations=self.erosion_iter)
+        mask = cv2.dilate(mask, self.kernel, iterations=self.dilation_iter)
         return mask
 
     def color_detector(self, frame_HSV):
+        """Detect colors using config thresholds"""
         clean_mask_y = self.mask_clean(cv2.inRange(frame_HSV, self.lowerYellow, self.upperYellow))
         clean_mask_b = self.mask_clean(cv2.inRange(frame_HSV, self.lowerBlue, self.upperBlue))
         return clean_mask_y, clean_mask_b
 
-
-    def find_contour(self,clean_mask_y, clean_mask_b):
+    def find_contour(self, clean_mask_y, clean_mask_b):
         contours_b, _ = cv2.findContours(clean_mask_b, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         contours_y, _ = cv2.findContours(clean_mask_y, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         return contours_y, contours_b
@@ -114,7 +155,7 @@ class PerceptionModule():
 
             for contour in contour_list:
                 area = cv2.contourArea(contour)
-                if area < 30:
+                if area < self.min_contour_area:  # Use config value
                     continue
 
                 # Bounding box method
@@ -132,36 +173,55 @@ class PerceptionModule():
         return self.contour_centers
 
     def contour_control(self, contour_centers, img):
+        """Filter contours to find cone tops using config neighbor distance"""
         self.cone_positions = []
-        # Loops through alle contour centers. checks if two of them are less than "Afvig" pixels away horizontally (x).
-        # if there are, the center highest up (biggest y) is added to cone_positions.
-        #also draws a circle of each cone position.
-        for i in range(0, len(contour_centers)):
+
+        for i in range(len(contour_centers)):
             p = 0
-            for j in range(0, len(contour_centers)):
+            for j in range(len(contour_centers)):
+                # Use config neighbor_distance
+                if i != j and -self.neighbor_distance < (
+                        contour_centers[i][0] - contour_centers[j][0]) < self.neighbor_distance and contour_centers[i][
+                    1] < contour_centers[j][1]:
+                    self.cone_positions.append(contour_centers[i])
+                    break
 
-                if i != j and -self.afvig < (contour_centers[i][0] - contour_centers[j][0]) < self.afvig and contour_centers[i][
-                    1] < \
-                        contour_centers[j][1]:
-                    self.cone_positions.append(contour_centers[i])  # øverste contour gemmes i cone_positions
-
-                if i != j and -self.afvig > (contour_centers[i][0] - contour_centers[j][0]) or self.afvig < (
-                        contour_centers[i][0] - contour_centers[j][0]):
-                    p = p + 1
+                if i != j and (-self.neighbor_distance > (
+                        contour_centers[i][0] - contour_centers[j][0]) or self.neighbor_distance < (
+                                       contour_centers[i][0] - contour_centers[j][0])):
+                    p += 1
                     if p >= len(contour_centers) - 1:
-                        #cv2.circle(img, (contour_centers[i][0], contour_centers[i][1]), 4, (255, 255, 255), -1)
-                        self.cone_positions.append(contour_centers[i])  # contour gemmes hvis den står alane
-                if len(contour_centers) == 1:
-                    self.cone_positions.append(contour_centers[i])  # contour gemmes hvis den står alane
+                        self.cone_positions.append(contour_centers[i])
+
+            if len(contour_centers) == 1:
+                self.cone_positions.append(contour_centers[i])
+
         return self.cone_positions, img
 
+    def smooth_z(self, key, new_z: float) -> float:
+        """Smooth Z values using rolling window from config"""
+        if new_z <= 0:
+            return new_z
+
+        history = self.z_histories.get(key, [])
+        history.append(new_z)
+
+        if len(history) > self.z_window_size:  # Use config value
+            history.pop(0)
+
+        self.z_histories[key] = history
+        return sum(history) / len(history)
+
     def world_positioning(self, cone_positions, depth_frame, depth_intrin, img):
+        """Convert pixel positions to 3D world coordinates"""
         world_cones = []
 
         for i in range(len(cone_positions)):
             u = float(cone_positions[i][0])
             v = float(cone_positions[i][1])
-            depth_m = float(depth_frame.get_distance(int(u), int(v) + 180))
+
+            # Use config depth_offset
+            depth_m = float(depth_frame.get_distance(int(u), int(v) + self.depth_offset))
 
             if depth_m <= 0:
                 continue
@@ -177,7 +237,8 @@ class PerceptionModule():
             Y = round(Y, 2)
             Z = round(Z, 2)
 
-            if Z < 6:
+            # Use config max_depth
+            if Z < self.max_depth:
                 world_cones.append((X, Z, color, u, v))
                 cv2.circle(img, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
                 cv2.putText(img, f" c: {color} coo: {[X, Z]}", (int(u), int(v)),
@@ -186,6 +247,7 @@ class PerceptionModule():
         return world_cones, img
 
     def run(self):
+        """Main perception pipeline"""
         depth_frame, color_frame = self.get_frame()
         if depth_frame is None:
             return [], None
@@ -197,28 +259,12 @@ class PerceptionModule():
         contours_y, contours_b = self.find_contour(clean_mask_y, clean_mask_b)
         contour_centers = self.find_centers(contours_y, contours_b, img)
         cone_positions, img = self.contour_control(contour_centers, img)
-
         world_pos, img = self.world_positioning(cone_positions, depth_frame, depth_intrin, img)
-        blue_cones, yellow_cones = self.logic.cone_sorting(world_pos)
-        midpoints = self.logic.cone_midpoints(blue_cones, yellow_cones, img)
-
-        target = self.logic.Interpolation(midpoints)
-
-        if target is not None:
-            steering = self.logic.steering_angle(target)
-            # for now: just print it so you see it works
-            print(f"Target: {round(target, None)}, steering angle: {round(steering, None):.3f} deg")
-            self.ptrintmsg = True
-        elif self.ptrintmsg == True:
-            print("No target found (no midpoints)")
-            self.ptrintmsg = False
-
-        #cv2.imshow("thresh", img)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            return [], None
 
         return world_pos, img
 
     def shutdown(self):
+        """Clean shutdown of camera"""
+        logger.info("Shutting down perception module...")
         self.pipe.stop()
         cv2.destroyAllWindows()

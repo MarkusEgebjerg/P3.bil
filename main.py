@@ -125,10 +125,10 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
+
     logger.info("=" * 60)
-    logger.info("AAU Racing - Autonomous RC Car System")
+    logger.info("Press Ctrl+C to stop")
     logger.info("=" * 60)
-    logger.info("Press Ctrl+C to stop safely")
 
     # Initialize monitors
     perf_monitor = PerformanceMonitor()
