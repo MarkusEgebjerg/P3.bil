@@ -64,11 +64,14 @@ class SafetyMonitor:
         self.no_cone_timeout = no_cone_timeout
         self.last_cone_time = time.time()
         self.consecutive_no_cones = 0
-        self.max_consecutive_no_cones = 15  # ~0.5s at 30fps
+        self.max_consecutive_no_cones = 15
+        # ADD THIS: Track when we last complained to the log
+        self.last_log_time = 0
 
     def check_steering(self, angle):
         """Check if steering angle is within safe limits"""
         if angle is not None and abs(angle) > self.max_steering:
+            # OPTIONAL: Comment this out to reduce steering warnings too
             logger.warning(f"Steering angle {angle:.1f}° exceeds limit {self.max_steering}°")
             return min(max(angle, -self.max_steering), self.max_steering)
         return angle
@@ -81,11 +84,16 @@ class SafetyMonitor:
             if self.consecutive_no_cones >= self.max_consecutive_no_cones:
                 elapsed = time.time() - self.last_cone_time
                 if elapsed > self.no_cone_timeout:
-                    logger.error(f"No cones detected for {elapsed:.1f}s - possible issue!")
+                    # UPDATED LOGIC: Only log if 5 seconds have passed since last log
+                    if time.time() - self.last_log_time > 5.0:
+                        logger.error(f"No cones detected for {elapsed:.1f}s - possible issue!")
+                        self.last_log_time = time.time()
                     return False
         else:
             self.consecutive_no_cones = 0
             self.last_cone_time = time.time()
+            # Reset log timer so we get a fresh warning next time we lose cones
+            self.last_log_time = 0
 
         return True
 
