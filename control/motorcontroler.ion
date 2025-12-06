@@ -1,64 +1,78 @@
-//motorcontoroler.ion
-
 #include <Servo.h>
 
 Servo steering;
 int servoPin = 9;
 
-int RPWM = 5;  // Digital/PWM pin 5 to the RPWM on the BTS7960
-int LPWM = 6;  // Digital/PWM pin 6 to the LPWM on the BTS7960
+int RPWM = 5;
+int LPWM = 6;
 
-// Enable "Left" and "Right" movement
-int L_EN = 7;  // connect Digital/PWM pin 7 to L_EN on the BTS7960
-int R_EN = 8;  // connect Digital/PWM pin 8 to R_EN on the BTS7960
+int L_EN = 7;
+int R_EN = 8;
+
+// Timeout parameters
+const unsigned long TIMEOUT_MS = 500; // Stop if no data for 0.5 seconds
+unsigned long lastSignalTime = 0;
 
 void setup() {
   Serial.begin(115200);
   steering.attach(servoPin);
-  // put your setup code here, to run once:
 
-  // initialize all our pins to output
   for (int i = 5; i < 9; i++) {
     pinMode(i, OUTPUT);
+    digitalWrite(i, LOW); // Start low
   }
-  // set all the pins you want to use to LOW
-  for (int i = 5; i < 9; i++) {
-    digitalWrite(i, LOW);
-  }
-  delay(1000);// wait a second
-  Serial.begin(9600);
 
-  //enable "Right" and "Left" movement on the HBridge
-  // Notice use of digitalWrite to simply turn it on and keep it on.
+  // Enable H-Bridge
   digitalWrite(R_EN, HIGH);
   digitalWrite(L_EN, HIGH);
 
+  Serial.println("READY");
+  lastSignalTime = millis();
 }
 
 void loop() {
-  if (Serial.available()) {
-    String data = Serial.readStringUntil('\n');
+  // 1. SAFETY CHECK: Has it been too long since we heard from Python?
+  if (millis() - lastSignalTime > TIMEOUT_MS) {
+     stopMotors();
+  }
 
-    int comma = data.indexOf(',');
-    if (comma == -1) return;
+  // 2. READ DATA: Only run if data is waiting
+  if (Serial.available() > 0) {
+    // Reset the safety timer
+    lastSignalTime = millis();
 
-    int angle = data.substring(0, comma).toInt();
-    int speed = data.substring(comma + 1).toInt();
+    // Read integers directly (Faster than String)
+    // Expecting: "300,32\n" (Angle*10, Speed)
+    int raw_angle = Serial.parseInt();
+    int speed = Serial.parseInt();
 
-    // Servo: convert angle (-30 to +30) → (0 to 180)
-    int servo_val = map(angle, -30, 30, 60, 120);
-    steering.write(servo_val);
+    // Clear the buffer (read until newline)
+    if (Serial.read() == '\n') {
 
-    // Motor:
-    if (speed > 0) {
-      analogWrite(LPWM, 0);
-      analogWrite(RPWM, speed);
-    } else if (speed < 0) {
-      analogWrite(RPWM, 0);
-      analogWrite(LPWM, speed);
-    } else {
-      analogWrite(RPWM, 0);
-      analogWrite(LPWM, 0);
+      // --- STEERING ---
+      // Python sends angle * 10 (e.g., -300 to 300)
+      // Map -300/300 directly to servo 60/120
+      int servo_val = map(raw_angle, -300, 300, 60, 120);
+      steering.write(servo_val);
+
+      // --- MOTOR CONTROL ---
+      // Logic for Forward, Reverse, and Stop
+      if (speed > 0) {
+        analogWrite(LPWM, 0);
+        analogWrite(RPWM, speed);
+      }
+      else if (speed < 0) {
+        analogWrite(RPWM, 0);
+        analogWrite(LPWM, abs(speed)); // PWM must be positive
+      }
+      else {
+        stopMotors();
+      }
     }
   }
+}
+
+void stopMotors() {
+  analogWrite(RPWM, 0);
+  analogWrite(LPWM, 0);
 }

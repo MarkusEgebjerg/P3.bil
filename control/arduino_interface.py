@@ -103,7 +103,7 @@ class ArduinoInterface:
             self.last_command = (steering, speed)
 
             # Small delay to prevent Arduino overload (from config)
-            time.sleep(self.command_delay)
+            #time.sleep(self.command_delay)
 
             # Try to read response
             try:
