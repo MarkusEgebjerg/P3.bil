@@ -26,11 +26,6 @@ def main():
 
             arduino.send(angle, speed)
 
-            #for x in range(-30, speed):
-            #    resp = arduino.send(x, 0)
-            #    print("Sent:", x, "Arduino:", resp)
-            # Send to Arduino
-            #print(angle)
 
     except KeyboardInterrupt:
         print("Stopped by user")

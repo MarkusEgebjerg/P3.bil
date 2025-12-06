@@ -30,6 +30,7 @@ class LogicModule:
 
             midpoints.append((x, z, u, v))
 
+            # Draw midpoints if image is provided
             if img is not None:
                 try:
                     cv2.circle(img, (u, v), 4, (0, 255, 0), -1)
@@ -66,8 +67,8 @@ class LogicModule:
         A = x1**2 + z1**2
         B = 2*(x0*x1 + z0*z1)
         C = x0**2 + z0**2 - self.l**2
-
         D = B*B - 4*A*C
+
         if D < 0:
             return None
 
@@ -81,13 +82,22 @@ class LogicModule:
         return (x0 + s*x1, z0 + s*z1)
 
     def steering_angle(self, target):
+        """
+        Calculate steering angle using pure pursuit algorithm.
+        Returns steering angle in degrees.
+        """
         if target is None:
             return None
+
         x, z = target
-        # avoid division by zero
+
+        # Avoid division by zero
         if abs(x) < 1e-6:
             return 0.0
-        # radius r from pure pursuit geometry
-        r = (self.l**2) / (2.0 * x)
+
+        # Calculate turning radius
+        r = self.l ** 2 / (2.0 * x)
+
+        # Calculate steering angle
         steering_rad = np.arctan(self.WD / r)
         return float(np.degrees(steering_rad))

@@ -10,6 +10,8 @@ class PerceptionModule():
         self.pipe = rs.pipeline()
         self.cfg = rs.config()
 
+        self.ptrintmsg = True
+
         self.res_x = 1280
         self.res_y = 720
         self.fps = 30
@@ -19,7 +21,7 @@ class PerceptionModule():
         self.align = rs.align(rs.stream.color)
 
         # Start streaming
-        print("Starting RealSense pipeline...")
+        print("Starting RealSense...")
         try:
             self.stream = self.pipe.start(self.cfg)
         except RuntimeError as e:
@@ -27,7 +29,7 @@ class PerceptionModule():
             print(f"ERROR: Failed to start RealSense pipeline. Is the camera in use? Details: {e}")
             raise
 
-        # --- Warm-up RealSense pipeline ---
+        # --- Warm-up RealSense ---
         # Discard the first few frames to allow auto-exposure/gain to settle and prevent initial timeouts.
         print("Warming up camera...")
         for i in range(30):
@@ -44,9 +46,9 @@ class PerceptionModule():
         self.depth_intrin = None
 
         # --- Color Detection Settings ---
-        self.lowerYellow = np.array([20, 110, 90])
+        self.lowerYellow = np.array([22, 110, 120])
         self.upperYellow = np.array([33, 255, 255])
-        self.lowerBlue = np.array([105, 120, 60])
+        self.lowerBlue = np.array([100, 120, 60])
         self.upperBlue = np.array([135, 255, 255])
 
         self.kernel = np.ones((2, 3))
@@ -79,12 +81,13 @@ class PerceptionModule():
 
         return depth_frame.as_depth_frame()
 
-    def color_space_conversion (self, color_frame):
-        img = np.asanyarray(color_frame.get_data())
-        res_y, res_x = img.shape[:2]
-        img = img[res_y//2:res_y, 0:res_x]
-        frame_HSV = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        return frame_HSV, img
+    def color_space_conversion(self, color_frame):
+        color_array = np.asanyarray(color_frame.get_data())
+        res_y, res_x = color_array.shape[:2]
+        # Use the working crop from main.py: 1/4 to 3/4 vertically
+        color_array = color_array[int(res_y*(1/4)):int(res_y*(3/4)), 0:res_x]
+        frame_HSV = cv2.cvtColor(color_array, cv2.COLOR_BGR2HSV)
+        return frame_HSV, color_array
 
     def mask_clean(self, mask):
         mask = cv2.erode(mask, self.kernel, iterations=2)
@@ -102,38 +105,30 @@ class PerceptionModule():
         contours_y, _ = cv2.findContours(clean_mask_y, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         return contours_y, contours_b
 
-
-    def find_centers(self, contours_y, contours_b,img): #finds contour center and draws contour
+    def find_centers(self, contours_y, contours_b, img):
+        """Find contour centers using bounding box method"""
         self.contour_centers = []
-        for i in range(2):
-            list = contours_b
-            if i == 1:
-                list = contours_y
 
-            for contour in list:
+        for i in range(2):
+            contour_list = contours_b if i == 0 else contours_y
+
+            for contour in contour_list:
                 area = cv2.contourArea(contour)
                 if area < 30:
                     continue
 
-                epsilon = 0.04 * cv2.arcLength(contour, True)
-                approx = cv2.approxPolyDP(contour, epsilon, True)
+                # Bounding box method
+                x, y, w, h = cv2.boundingRect(contour)
+                cx = int(x + w / 2)
+                cy = int(y + h / 2)
 
-                M = cv2.moments(contour)
-                if M["m00"] == 0:
-                    continue
+                color_label = "Blue" if i == 0 else "Yellow"
+                self.current_center = (cx, cy, color_label)
+                self.contour_centers.append(self.current_center)
 
-                cx = int(M['m10'] / M['m00'])
-                cy = int(M['m01'] / M['m00'])
-                if i == 1:
-                    self.current_center = (cx, cy, "Yellow")
-                    self.contour_centers.append(self.current_center)
-                else:
-                    self.current_center = (cx, cy, "Blue")
-                    self.contour_centers.append(self.current_center)
+                # Draw bounding box
+                cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
-                # Draw the contour
-                if len(approx) > 3:
-                    cv2.drawContours(img, [approx], 0, (255, 0, 0), 5)
         return self.contour_centers
 
     def contour_control(self, contour_centers, img):
@@ -163,28 +158,32 @@ class PerceptionModule():
     def world_positioning(self, cone_positions, depth_frame, depth_intrin, img):
         world_cones = []
 
-        for i in range(0, len(cone_positions)):
-            u = float(cone_positions[i][0])  # pixel x
-            v = float(cone_positions[i][1])  # pixel y
-            depth_m = float(depth_frame.get_distance(int(u), int(v)+180))
+        for i in range(len(cone_positions)):
+            u = float(cone_positions[i][0])
+            v = float(cone_positions[i][1])
+            depth_m = float(depth_frame.get_distance(int(u), int(v) + 180))
+
             if depth_m <= 0:
                 continue
 
             X, Y, Z = rs.rs2_deproject_pixel_to_point(depth_intrin, [u, v], depth_m)
+            color = cone_positions[i][2]
+
+            # Apply Z-smoothing
+            key = (color, int(u // 10), int(v // 10))
+            Z = self.smooth_z(key, Z)
+
             X = round(X, 2)
             Y = round(Y, 2)
             Z = round(Z, 2)
 
-            color = cone_positions[i][2]
-
             if Z < 6:
-
                 world_cones.append((X, Z, color, u, v))
                 cv2.circle(img, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
-                cv2.putText(img, f" c: {(cone_positions[i][2])} coo: {[X, Z]}", (int(u), int(v)),
+                cv2.putText(img, f" c: {color} coo: {[X, Z]}", (int(u), int(v)),
                             cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
 
-        return  world_cones, img
+        return world_cones, img
 
     def run(self):
         depth_frame, color_frame = self.get_frame()
@@ -204,12 +203,15 @@ class PerceptionModule():
         midpoints = self.logic.cone_midpoints(blue_cones, yellow_cones, img)
 
         target = self.logic.Interpolation(midpoints)
+
         if target is not None:
             steering = self.logic.steering_angle(target)
             # for now: just print it so you see it works
-            print(f"Target: {target}, steering angle: {steering:.3f} deg")
-        else:
+            print(f"Target: {round(target, None)}, steering angle: {round(steering, None):.3f} deg")
+            self.ptrintmsg = True
+        elif self.ptrintmsg == True:
             print("No target found (no midpoints)")
+            self.ptrintmsg = False
 
         #cv2.imshow("thresh", img)
         if cv2.waitKey(1) & 0xFF == ord('q'):
