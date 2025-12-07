@@ -19,11 +19,12 @@ RUN apt-get update && apt-get install -y \
     libcanberra-gtk3-module \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Arduino CLI
+# Install Arduino CLI + AVR + Servo library
 RUN curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh \
     && mv bin/arduino-cli /usr/local/bin/ \
     && arduino-cli core update-index \
-    && arduino-cli core install arduino:avr
+    && arduino-cli core install arduino:avr \
+    && arduino-cli lib install Servo
 
 # Python packages
 RUN pip3 install opencv-python numpy pyrealsense2 pyserial
