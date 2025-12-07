@@ -134,9 +134,9 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
 
-    logger.info("=" * 60)
+    logger.info("=" * 30)
     logger.info("Press Ctrl+C to stop")
-    logger.info("=" * 60)
+    logger.info("=" * 30)
 
     # Initialize monitors
     perf_monitor = PerformanceMonitor()

@@ -3,7 +3,6 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # System dependencies
-# -------------------------------------------------------
 RUN apt-get update && apt-get install -y \
     curl \
     python3 python3-pip python3-dev \
@@ -20,20 +19,35 @@ RUN apt-get update && apt-get install -y \
     libcanberra-gtk3-module \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Arduino CLI
+RUN curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh \
+    && mv bin/arduino-cli /usr/local/bin/ \
+    && arduino-cli core update-index \
+    && arduino-cli core install arduino:avr
 
-# -------------------------------------------------------
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
-
-# Python packages (OpenCV, NumPy, RealSense)
-# -------------------------------------------------------
+# Python packages
 RUN pip3 install opencv-python numpy pyrealsense2 pyserial
 
-# -------------------------------------------------------
-# Copy your application
-# -------------------------------------------------------
+# Copy application
 WORKDIR /app
 COPY . .
 
-CMD ["python3", "main.py"]
+# Make upload script executable
+RUN chmod +x /app/upload_arduino.py
+
+# Create startup script
+RUN echo '#!/bin/bash\n\
+echo "Starting AAU Racing RC Car System..."\n\
+echo ""\n\
+# Upload Arduino sketch if it exists\n\
+if [ -f "/app/arduino/motorcontroller/motorcontroller.ino" ]; then\n\
+    python3 /app/upload_arduino.py\n\
+else\n\
+    echo "Warning: Arduino sketch not found, skipping upload"\n\
+fi\n\
+echo ""\n\
+# Run main program\n\
+python3 main.py\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+CMD ["/app/start.sh"]
