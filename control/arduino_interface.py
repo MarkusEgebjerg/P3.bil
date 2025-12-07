@@ -59,7 +59,7 @@ class ArduinoInterface:
                             break
                     time.sleep(0.1)
 
-                logger.info("✓ Arduino connected and ready!")
+                logger.info("Arduino connected and ready!")
 
                 # Send initial safe command
                 self.send(0, 0)
@@ -147,13 +147,13 @@ class ArduinoInterface:
             logger.info("Attempting reconnection...")
             self._connect()
             self.error_count = 0
-            logger.info("✓ Reconnection successful!")
+            logger.info("Reconnection successful!")
 
         except Exception as e:
-            logger.error(f"✗ Reconnection failed: {e}")
+            logger.error(f" Reconnection failed: {e}")
 
     def emergency_stop(self):
-        logger.warning("⚠ EMERGENCY STOP!")
+        logger.warning("EMERGENCY STOP!")
         for _ in range(5):  # Send multiple times
             self.send(0, 0)
             time.sleep(0.02)

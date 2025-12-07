@@ -6,7 +6,6 @@ from datetime import datetime
 from perception.perception_module import PerceptionModule
 from logic.logic_module import LogicModule
 from control.arduino_interface import ArduinoInterface
-from visual_debugger import VisualDebugger  # Add this import
 
 # Configure logging
 logging.basicConfig(
@@ -23,7 +22,6 @@ logger = logging.getLogger(__name__)
 perception = None
 arduino = None
 logic = None
-debugger = None  # Add debugger
 
 
 class PerformanceMonitor:
@@ -110,13 +108,6 @@ def signal_handler(sig, frame):
         except Exception as e:
             logger.error(f"Error closing Arduino: {e}")
 
-    # Close debugger windows
-    if debugger is not None:
-        try:
-            debugger.cleanup()
-        except Exception as e:
-            logger.error(f"Error closing debugger: {e}")
-
     # Close camera
     if perception is not None:
         try:
@@ -131,7 +122,7 @@ def signal_handler(sig, frame):
 
 
 def main():
-    global perception, arduino, logic, debugger
+    global perception, arduino, logic
 
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
@@ -141,18 +132,12 @@ def main():
     logger.info("AAU RACING - AUTONOMOUS RC CAR")
     logger.info("=" * 60)
     logger.info("Controls:")
-    logger.info("  V - Toggle visualization")
-    logger.info("  S - Save snapshot")
-    logger.info("  Q - Quit")
     logger.info("  Ctrl+C - Emergency stop")
     logger.info("=" * 60)
 
     # Initialize monitors
     perf_monitor = PerformanceMonitor()
     safety_monitor = SafetyMonitor(max_steering=30.0)
-
-    # Initialize visual debugger (starts disabled for performance)
-    debugger = VisualDebugger(enabled=False)
 
     # Initialize modules with retry logic
     max_retries = 3
@@ -221,23 +206,6 @@ def main():
                 # Send to Arduino
                 arduino.send(angle, speed)
 
-                # === VISUAL DEBUG (only if enabled) ===
-                if debugger.enabled:
-                    # Show main annotated view
-                    debugger.show_main_view(img, cones_world, blue, yellow, target, angle)
-
-                    # Show bird's eye view
-                    debugger.show_bird_eye_view(blue, yellow, midpoints, target)
-
-                    # Optionally show color masks (uncomment if needed)
-                    # You'd need to pass masks from perception module for this
-                    # debugger.show_masks(clean_mask_y, clean_mask_b)
-
-                # Check for keyboard input (works even when visualization disabled)
-                if not debugger.check_events(img, blue, yellow, midpoints, target):
-                    logger.info("Quit requested - stopping...")
-                    break
-
                 # Performance monitoring
                 loop_time = perf_monitor.update()
                 loop_count += 1
@@ -252,10 +220,6 @@ def main():
                                     f"max: {stats['max_loop_time'] * 1000:.1f}ms)")
                         logger.info(f"Cones detected: {len(cones_world)}, "
                                     f"Blue: {len(blue)}, Yellow: {len(yellow)}")
-
-                        # Show visualization impact
-                        if debugger.enabled:
-                            logger.info("⚠ Visualization enabled - may reduce performance")
 
             except Exception as e:
                 logger.error(f"Error in control loop iteration: {e}")
@@ -272,9 +236,6 @@ def main():
     finally:
         # Cleanup
         logger.info("Performing cleanup...")
-
-        if debugger:
-            debugger.cleanup()
 
         if arduino:
             try:

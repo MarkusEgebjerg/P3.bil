@@ -30,7 +30,7 @@ def find_arduino_port():
 
     for port in possible_ports:
         if os.path.exists(port):
-            print(f"✓ Found Arduino at: {port}")
+            print(f"Found Arduino at: {port}")
             return port
 
     print("✗ No Arduino found!")
@@ -55,7 +55,7 @@ def upload_arduino_sketch(sketch_path, port, board="arduino:avr:uno"):
         print(f"✗ Error: Sketch not found at {sketch_path}")
         return False
 
-    print(f"✓ Sketch found: {sketch_path}")
+    print(f"Sketch found: {sketch_path}")
 
     # Check if port exists
     if not port:
@@ -73,7 +73,7 @@ def upload_arduino_sketch(sketch_path, port, board="arduino:avr:uno"):
             last_hash = f.read().strip()
 
         if last_hash == current_hash:
-            print("✓ Sketch unchanged, skipping upload")
+            print("Sketch unchanged, skipping upload")
             print("  (Delete /tmp/arduino_sketch.hash to force upload)")
             return True
 
@@ -101,7 +101,7 @@ def upload_arduino_sketch(sketch_path, port, board="arduino:avr:uno"):
             print(result.stderr)
             return False
 
-        print("✓ Compilation successful!")
+        print("Compilation successful!")
 
         # Upload the sketch
         print("\nUploading to Arduino...")
@@ -124,7 +124,7 @@ def upload_arduino_sketch(sketch_path, port, board="arduino:avr:uno"):
             print(result.stderr)
             return False
 
-        print("✓ Upload successful!")
+        print("Upload successful!")
 
         # Save hash to avoid re-uploading
         with open(hash_file, 'w') as f:
@@ -135,7 +135,7 @@ def upload_arduino_sketch(sketch_path, port, board="arduino:avr:uno"):
         time.sleep(3)
 
         print("=" * 60)
-        print("✓ ARDUINO READY")
+        print("ARDUINO READY")
         print("=" * 60 + "\n")
 
         return True
