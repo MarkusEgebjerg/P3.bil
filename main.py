@@ -6,6 +6,7 @@ from datetime import datetime
 from perception.perception_module import PerceptionModule
 from logic.logic_module import LogicModule
 from control.arduino_interface import ArduinoInterface
+from visual_debugger import VisualDebugger  # Add this import
 
 # Configure logging
 logging.basicConfig(
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 perception = None
 arduino = None
 logic = None
+debugger = None  # Add debugger
 
 
 class PerformanceMonitor:
@@ -70,8 +72,6 @@ class SafetyMonitor:
     def check_steering(self, angle):
         """Check if steering angle is within safe limits"""
         if angle is not None and abs(angle) > self.max_steering:
-            # OPTIONAL: Comment this out to reduce steering warnings too
-            logger.warning(f"Steering angle {angle:.1f}° exceeds limit {self.max_steering}°")
             return min(max(angle, -self.max_steering), self.max_steering)
         return angle
 
@@ -83,7 +83,6 @@ class SafetyMonitor:
             if self.consecutive_no_cones >= self.max_consecutive_no_cones:
                 elapsed = time.time() - self.last_cone_time
                 if elapsed > self.no_cone_timeout:
-                    # UPDATED LOGIC: Only log if 5 seconds have passed since last log
                     if time.time() - self.last_log_time > 5.0:
                         logger.error(f"No cones detected for {elapsed:.1f}s - possible issue!")
                         self.last_log_time = time.time()
@@ -91,7 +90,6 @@ class SafetyMonitor:
         else:
             self.consecutive_no_cones = 0
             self.last_cone_time = time.time()
-            # Reset log timer so we get a fresh warning next time we lose cones
             self.last_log_time = 0
 
         return True
@@ -106,11 +104,18 @@ def signal_handler(sig, frame):
         try:
             logger.info("Stopping motors...")
             arduino.send(0, 0)
-            time.sleep(0.1)  # Give Arduino time to process
+            time.sleep(0.1)
             arduino.close()
             logger.info("Arduino connection closed.")
         except Exception as e:
             logger.error(f"Error closing Arduino: {e}")
+
+    # Close debugger windows
+    if debugger is not None:
+        try:
+            debugger.cleanup()
+        except Exception as e:
+            logger.error(f"Error closing debugger: {e}")
 
     # Close camera
     if perception is not None:
@@ -126,20 +131,28 @@ def signal_handler(sig, frame):
 
 
 def main():
-    global perception, arduino, logic
+    global perception, arduino, logic, debugger
 
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-
-    logger.info("=" * 30)
-    logger.info("Press Ctrl+C to stop")
-    logger.info("=" * 30)
+    logger.info("=" * 60)
+    logger.info("AAU RACING - AUTONOMOUS RC CAR")
+    logger.info("=" * 60)
+    logger.info("Controls:")
+    logger.info("  V - Toggle visualization")
+    logger.info("  S - Save snapshot")
+    logger.info("  Q - Quit")
+    logger.info("  Ctrl+C - Emergency stop")
+    logger.info("=" * 60)
 
     # Initialize monitors
     perf_monitor = PerformanceMonitor()
     safety_monitor = SafetyMonitor(max_steering=30.0)
+
+    # Initialize visual debugger (starts disabled for performance)
+    debugger = VisualDebugger(enabled=False)
 
     # Initialize modules with retry logic
     max_retries = 3
@@ -176,7 +189,7 @@ def main():
     try:
         logger.info("Starting control loop...")
         loop_count = 0
-        stats_interval = 30  # Print stats every 30 loops
+        stats_interval = 30
 
         while True:
             loop_start = time.time()
@@ -185,7 +198,7 @@ def main():
                 # Perception
                 cones_world, img = perception.run()
 
-                # Safety check - are we still detecting cones?
+                # Safety check
                 if not safety_monitor.check_cone_detection(cones_world):
                     logger.warning("Extended cone detection failure - continuing with caution")
 
@@ -197,16 +210,33 @@ def main():
                 # Calculate control outputs
                 if target:
                     angle = logic.steering_angle(target)
-                    angle = safety_monitor.check_steering(angle)  # Safety limit
+                    angle = safety_monitor.check_steering(angle)
                     speed = 32
                 else:
-                    if loop_count % 10 == 0:  # Don't spam logs
+                    if loop_count % 10 == 0:
                         logger.debug("No targets found")
                     angle = 0
-                    speed = 32  # Continue straight at slow speed
+                    speed = 32
 
                 # Send to Arduino
                 arduino.send(angle, speed)
+
+                # === VISUAL DEBUG (only if enabled) ===
+                if debugger.enabled:
+                    # Show main annotated view
+                    debugger.show_main_view(img, cones_world, blue, yellow, target, angle)
+
+                    # Show bird's eye view
+                    debugger.show_bird_eye_view(blue, yellow, midpoints, target)
+
+                    # Optionally show color masks (uncomment if needed)
+                    # You'd need to pass masks from perception module for this
+                    # debugger.show_masks(clean_mask_y, clean_mask_b)
+
+                # Check for keyboard input (works even when visualization disabled)
+                if not debugger.check_events(img, blue, yellow, midpoints, target):
+                    logger.info("Quit requested - stopping...")
+                    break
 
                 # Performance monitoring
                 loop_time = perf_monitor.update()
@@ -223,14 +253,17 @@ def main():
                         logger.info(f"Cones detected: {len(cones_world)}, "
                                     f"Blue: {len(blue)}, Yellow: {len(yellow)}")
 
+                        # Show visualization impact
+                        if debugger.enabled:
+                            logger.info("⚠ Visualization enabled - may reduce performance")
+
             except Exception as e:
                 logger.error(f"Error in control loop iteration: {e}")
-                # Try to recover by sending safe command
                 try:
-                    arduino.send(0, 20)  # Straight, slow speed
+                    arduino.send(0, 20)
                 except:
                     pass
-                time.sleep(0.1)  # Brief pause before retry
+                time.sleep(0.1)
 
     except KeyboardInterrupt:
         logger.info("Stopped by user (Ctrl+C)")
@@ -239,6 +272,10 @@ def main():
     finally:
         # Cleanup
         logger.info("Performing cleanup...")
+
+        if debugger:
+            debugger.cleanup()
+
         if arduino:
             try:
                 logger.info("Stopping motors...")
