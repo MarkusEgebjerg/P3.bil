@@ -23,6 +23,8 @@ const int R_EN = 8;  // Right Enable
 const unsigned long TIMEOUT_MS = 500;  // Stop if no data for 0.5 seconds
 unsigned long lastSignalTime = 0;
 
+bool motorActive = false
+
 void setup() {
   Serial.begin(115200);
 
@@ -40,19 +42,24 @@ void setup() {
   digitalWrite(RPWM, LOW);
   digitalWrite(LPWM, LOW);
 
-  // Enable H-Bridge
-  digitalWrite(R_EN, HIGH);
-  digitalWrite(L_EN, HIGH);
-
   Serial.println("READY");
   Serial.println("AAU Racing Motor Controller v1.0");
   lastSignalTime = millis();
 }
 
 void loop() {
-  // SAFETY CHECK: Has it been too long since we heard from Python?
+  if (motorActive == true) {
+    // Enable H-Bridge
+    digitalWrite(R_EN, HIGH);
+    digitalWrite(L_EN, HIGH);
+  }
+
+
+
+  // Has it been too long since we heard from Python?
   if (millis() - lastSignalTime > TIMEOUT_MS) {
     stopMotors();
+    motorActive = false
   }
 
   // READ DATA: Only run if data is waiting
@@ -95,4 +102,8 @@ void loop() {
 void stopMotors() {
   analogWrite(RPWM, 0);
   analogWrite(LPWM, 0);
+
+  // everything off
+  digitalWrite(RPWM, LOW);
+  digitalWrite(LPWM, LOW);
 }
