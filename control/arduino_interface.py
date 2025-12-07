@@ -2,11 +2,9 @@ import serial
 import time
 import logging
 
-# Import config
 try:
     from config import CONTROL_CONFIG, SAFETY_CONFIG
 except ImportError:
-    # Fallback to default values if config.py not found
     CONTROL_CONFIG = {
         'default_speed': 32,
         'max_steering_angle': 30.0,
@@ -14,31 +12,17 @@ except ImportError:
         'arduino_baud': 115200,
         'command_delay': 0.01
     }
-    SAFETY_CONFIG = {
-        'max_steering_angle': 30.0
-    }
+    SAFETY_CONFIG = {'max_steering_angle': 30.0}
 
 logger = logging.getLogger(__name__)
 
 
 class ArduinoInterface:
-    """Enhanced Arduino interface with error handling and reconnection"""
-
-    def __init__(self, port=None, baud=None, timeout=0.1):
-        """
-        Initialize Arduino interface
-
-        Args:
-            port: Serial port (uses config if None)
-            baud: Baud rate (uses config if None)
-            timeout: Serial timeout in seconds
-        """
-        # Use provided values or fall back to config
+    def __init__(self, port=None, baud=None, timeout=0.05):
         self.port = port if port is not None else CONTROL_CONFIG['arduino_port']
         self.baud = baud if baud is not None else CONTROL_CONFIG['arduino_baud']
         self.timeout = timeout
 
-        # Use config values
         self.max_steering = SAFETY_CONFIG['max_steering_angle']
         self.command_delay = CONTROL_CONFIG['command_delay']
 
@@ -46,6 +30,8 @@ class ArduinoInterface:
         self.last_command = (0, 0)
         self.command_count = 0
         self.error_count = 0
+        self.ack_failures = 0  # Track failed acknowledgments
+        self.last_ack_check = time.time()
 
         logger.info(f"Initializing Arduino on {self.port} at {self.baud} baud")
         self._connect()
@@ -55,44 +41,49 @@ class ArduinoInterface:
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
-                logger.info(f"Attempting to connect to Arduino (attempt {attempt + 1}/{max_attempts})...")
+                logger.info(f"Connecting to Arduino (attempt {attempt + 1}/{max_attempts})...")
                 self.ser = serial.Serial(self.port, self.baud, timeout=self.timeout)
-                time.sleep(2)  # Wait for Arduino to reset
-                logger.info("Arduino connected successfully!")
+                time.sleep(2.5)  # Wait for Arduino reset
+
+                # Clear any startup messages
+                self.ser.reset_input_buffer()
+                self.ser.reset_output_buffer()
+
+                # Wait for READY signal
+                ready_timeout = time.time() + 3.0
+                while time.time() < ready_timeout:
+                    if self.ser.in_waiting > 0:
+                        line = self.ser.readline().decode().strip()
+                        logger.info(f"Arduino: {line}")
+                        if "READY" in line:
+                            break
+                    time.sleep(0.1)
+
+                logger.info("✓ Arduino connected and ready!")
 
                 # Send initial safe command
                 self.send(0, 0)
                 return
 
             except serial.SerialException as e:
-                logger.warning(f"Connection attempt {attempt + 1}/{max_attempts} failed: {e}")
+                logger.warning(f"Connection attempt {attempt + 1} failed: {e}")
                 if attempt < max_attempts - 1:
                     time.sleep(1)
                 else:
-                    raise Exception(f"Failed to connect to Arduino after {max_attempts} attempts")
+                    raise Exception(f"Failed to connect after {max_attempts} attempts")
 
     def send(self, steering, speed):
-        """
-        Send steering and speed commands to Arduino
-
-        Args:
-            steering: Steering angle in degrees (clamped to config max)
-            speed: Speed value (0-255)
-
-        Returns:
-            Response from Arduino or None
-        """
         if self.ser is None or not self.ser.is_open:
             logger.error("Arduino not connected!")
-            return None
+            return False
 
         try:
-            # Validate and clamp inputs using config values
+            # Validate and clamp inputs
             steering = max(-self.max_steering, min(self.max_steering, steering))
             speed = max(0, min(255, int(speed)))
 
-            # Convert steering to integer (multiply by 10 for precision)
-            steering_int = int(steering * 10)  # e.g., -300 to 300
+            # Convert to protocol format
+            steering_int = int(steering * 10)  # -300 to 300
 
             # Format message
             msg = f"{steering_int},{speed}\n"
@@ -102,40 +93,51 @@ class ArduinoInterface:
             self.command_count += 1
             self.last_command = (steering, speed)
 
-            # Small delay to prevent Arduino overload (from config)
-            #time.sleep(self.command_delay)
+            # Check for acknowledgment occasionally (every 30 commands)
+            # This prevents overwhelming the serial buffer with reads
+            if self.command_count % 30 == 0:
+                ack_received = False
+                check_start = time.time()
 
-            # Try to read response
-            try:
-                if self.ser.in_waiting > 0:
-                    line = self.ser.readline().decode().strip()
-                    if line:
-                        # Only log every 30th response to reduce spam
-                        if self.command_count % 30 == 0:
-                            logger.debug(f"Arduino response: {line}")
-                        return line
-            except Exception as e:
-                logger.debug(f"Error reading Arduino response: {e}")
+                while time.time() - check_start < 0.01:  # 10ms window
+                    if self.ser.in_waiting > 0:
+                        try:
+                            line = self.ser.readline().decode().strip()
+                            if line:
+                                logger.debug(f"Arduino: {line}")
+                                ack_received = True
+                                break
+                        except:
+                            pass
 
-            return None
+                if not ack_received:
+                    self.ack_failures += 1
+
+                    # Log health check
+                    if time.time() - self.last_ack_check > 5.0:
+                        logger.info(f"Arduino health: {self.command_count} cmds, "
+                                    f"{self.ack_failures} ack fails, "
+                                    f"{self.error_count} errors")
+                        self.last_ack_check = time.time()
+
+            return True
 
         except serial.SerialException as e:
             self.error_count += 1
-            logger.error(f"Serial communication error: {e}")
+            logger.error(f"Serial error: {e}")
 
-            # Attempt reconnection after multiple errors
+            # Reconnect after multiple errors
             if self.error_count >= 5:
-                logger.warning("Multiple errors detected, attempting reconnection...")
+                logger.warning("Multiple errors - attempting reconnection...")
                 self._reconnect()
 
-            return None
+            return False
 
         except Exception as e:
-            logger.error(f"Unexpected error in send(): {e}")
-            return None
+            logger.error(f"Unexpected error: {e}")
+            return False
 
     def _reconnect(self):
-        """Attempt to reconnect to Arduino"""
         try:
             logger.info("Closing existing connection...")
             if self.ser:
@@ -145,40 +147,62 @@ class ArduinoInterface:
             logger.info("Attempting reconnection...")
             self._connect()
             self.error_count = 0
-            logger.info("Reconnection successful!")
+            logger.info("✓ Reconnection successful!")
 
         except Exception as e:
-            logger.error(f"Reconnection failed: {e}")
+            logger.error(f"✗ Reconnection failed: {e}")
 
     def emergency_stop(self):
-        """Send emergency stop command"""
-        logger.warning("EMERGENCY STOP!")
-        for _ in range(3):  # Send multiple times to ensure receipt
+        logger.warning("⚠ EMERGENCY STOP!")
+        for _ in range(5):  # Send multiple times
             self.send(0, 0)
-            time.sleep(0.05)
+            time.sleep(0.02)
+
+    def test_communication(self):
+        logger.info("Testing Arduino communication...")
+
+        test_commands = [
+            (0, 0),
+            (10, 32),
+            (-10, 32),
+            (0, 0)
+        ]
+
+        success_count = 0
+        for angle, speed in test_commands:
+            if self.send(angle, speed):
+                success_count += 1
+            time.sleep(0.1)
+
+        logger.info(f"Communication test: {success_count}/{len(test_commands)} successful")
+        return success_count == len(test_commands)
 
     def get_stats(self):
-        """Get statistics about Arduino communication"""
         return {
             'commands_sent': self.command_count,
             'error_count': self.error_count,
+            'ack_failures': self.ack_failures,
+            'success_rate': (self.command_count - self.error_count) / max(self.command_count, 1) * 100,
             'last_command': self.last_command,
             'is_connected': self.ser is not None and self.ser.is_open
         }
 
     def close(self):
-        """Close the Arduino connection"""
         if self.ser and self.ser.is_open:
             try:
-                # Send stop command before closing
                 logger.info("Sending final stop command...")
                 self.emergency_stop()
-                time.sleep(0.1)
+                time.sleep(0.2)
 
-                logger.info("Closing serial connection...")
+                # Log final stats
+                stats = self.get_stats()
+                logger.info(f"Final Arduino stats: {stats['commands_sent']} commands, "
+                            f"{stats['success_rate']:.1f}% success rate")
+
+                logger.info("Closing serial connection")
                 self.ser.close()
-                logger.info("Arduino connection closed successfully.")
+                logger.info("Arduino closed successfully")
             except Exception as e:
-                logger.error(f"Error closing Arduino: {e}")
+                logger.error(f"Error during cleanup: {e}")
         else:
-            logger.warning("Arduino was not connected or already closed.")
+            logger.warning("Arduino was not connected")

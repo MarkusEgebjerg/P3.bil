@@ -1,10 +1,10 @@
 /*
- * AAU Racing - Motor Controller
+ * AAU Racing - Motor Controller (FIXED VERSION)
  *
  * Controls servo steering and H-Bridge motor driver
  * Receives commands via serial: "angle,speed\n"
  *
- * Version: 1.0
+ * Version: 1.1 - Fixed bugs and improved stability
  * Board: Arduino Nano/Uno
  */
 
@@ -23,7 +23,7 @@ const int R_EN = 8;  // Right Enable
 const unsigned long TIMEOUT_MS = 500;  // Stop if no data for 0.5 seconds
 unsigned long lastSignalTime = 0;
 
-bool motorActive = false
+bool motorActive = false;  // FIX: Added semicolon (was missing!)
 
 void setup() {
   Serial.begin(115200);
@@ -41,69 +41,89 @@ void setup() {
   // Start with everything off
   digitalWrite(RPWM, LOW);
   digitalWrite(LPWM, LOW);
+  digitalWrite(R_EN, LOW);  // FIX: Start disabled
+  digitalWrite(L_EN, LOW);  // FIX: Start disabled
 
   Serial.println("READY");
-  Serial.println("AAU Racing Motor Controller v1.0");
+  Serial.println("AAU Racing Motor Controller v1.1");
   lastSignalTime = millis();
 }
 
 void loop() {
-  if (motorActive == true) {
-    // Enable H-Bridge
+  // Enable H-Bridge when active
+  if (motorActive) {
     digitalWrite(R_EN, HIGH);
     digitalWrite(L_EN, HIGH);
+  } else {
+    // FIX: Explicitly disable when not active
+    digitalWrite(R_EN, LOW);
+    digitalWrite(L_EN, LOW);
   }
 
-
-
-  // Has it been too long since we heard from Python?
+  // Safety timeout check
   if (millis() - lastSignalTime > TIMEOUT_MS) {
-    stopMotors();
-    motorActive = false
+    if (motorActive) {  // Only log once when transitioning
+      Serial.println("TIMEOUT - Stopping motors");
+      stopMotors();
+      motorActive = false;
+    }
   }
 
   // READ DATA: Only run if data is waiting
   if (Serial.available() > 0) {
-    // Reset the safety timer
-    lastSignalTime = millis();
-
-    // Read integers directly (Faster than String)
-    // Expecting: "300,32\n" (Angle*10, Speed)
+    // Read integers directly
     int raw_angle = Serial.parseInt();
     int speed = Serial.parseInt();
 
-    // Clear the buffer (read until newline)
-    if (Serial.read() == '\n') {
-
-      // --- STEERING ---
-      // Python sends angle * 10 (e.g., -300 to 300)
-      // Map -300/300 directly to servo 60/120
-      int servo_val = map(raw_angle, -300, 300, 60, 120);
-      servo_val = constrain(servo_val, 60, 120);  // Safety clamp
-      steering.write(servo_val);
-
-      // --- MOTOR CONTROL ---
-      // Logic for Forward, Reverse, and Stop
-      if (speed > 0) {
-        analogWrite(LPWM, 0);
-        analogWrite(RPWM, constrain(speed, 0, 255));
-      }
-      else if (speed < 0) {
-        analogWrite(RPWM, 0);
-        analogWrite(LPWM, constrain(abs(speed), 0, 255));
-      }
-      else {
-        stopMotors();
+    // FIX: Proper buffer clearing
+    // Wait for newline, or timeout after 10ms
+    unsigned long start = millis();
+    while (Serial.available() > 0 && millis() - start < 10) {
+      if (Serial.read() == '\n') {
+        break;
       }
     }
+
+    // Reset the safety timer
+    lastSignalTime = millis();
+    motorActive = true;
+
+    // --- STEERING ---
+    // Python sends angle * 10 (e.g., -300 to 300)
+    // Map -300/300 to servo 60/120
+    int servo_val = map(raw_angle, -300, 300, 60, 120);
+    servo_val = constrain(servo_val, 60, 120);
+    steering.write(servo_val);
+
+    // --- MOTOR CONTROL ---
+    if (speed > 0) {
+      // Forward
+      analogWrite(LPWM, 0);
+      analogWrite(RPWM, constrain(speed, 0, 255));
+    }
+    else if (speed < 0) {
+      // Reverse
+      analogWrite(RPWM, 0);
+      analogWrite(LPWM, constrain(abs(speed), 0, 255));
+    }
+    else {
+      // Stop
+      stopMotors();
+    }
+
+    // FIX: Optional - Echo back for debugging (comment out for production)
+    // Uncomment next line to see what Arduino receives:
+    // Serial.print("OK:"); Serial.print(raw_angle); Serial.print(","); Serial.println(speed);
   }
+
+  // FIX: Small delay to prevent watchdog issues and reduce CPU load
+  // This doesn't affect responsiveness since serial is buffered
+  delay(1);  // 1ms delay = still ~1000 Hz loop rate
 }
 
 void stopMotors() {
   analogWrite(RPWM, 0);
   analogWrite(LPWM, 0);
-
-  // everything off
   digitalWrite(RPWM, LOW);
   digitalWrite(LPWM, LOW);
 }

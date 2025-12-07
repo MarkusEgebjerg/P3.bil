@@ -65,7 +65,6 @@ class SafetyMonitor:
         self.last_cone_time = time.time()
         self.consecutive_no_cones = 0
         self.max_consecutive_no_cones = 15
-        # ADD THIS: Track when we last complained to the log
         self.last_log_time = 0
 
     def check_steering(self, angle):
