@@ -37,19 +37,18 @@ def find_arduino_port():
     return None
 
 
-def upload_arduino_sketch(sketch_path, port, board="arduino:avr:nano"):
+def upload_arduino_sketch(sketch_path, port, board="arduino:avr:uno"):
     """
-    Upload Arduino sketch using arduino-cli
-
+    Upload using arduino-cli
     Args:
         sketch_path: Path to .ino file
         port: Serial port (e.g., /dev/ttyACM0)
         board: Board type (default: Arduino Nano)
     """
 
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 30)
     print("ARDUINO AUTO-UPLOAD")
-    print("=" * 60)
+    print("=" * 30)
 
     # Check if sketch exists
     if not os.path.exists(sketch_path):
@@ -155,7 +154,7 @@ def main():
     # Default values
     sketch_path = "/app/arduino/motorcontroller/motorcontroller.ino"
     port = None  # Auto-detect
-    board = "arduino:avr:nano"  # Change if using different board
+    board = "arduino:avr:uno"  # Change if using different board
 
     # Parse command line arguments
     if len(sys.argv) > 1:
