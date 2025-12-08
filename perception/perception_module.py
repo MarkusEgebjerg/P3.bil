@@ -230,8 +230,9 @@ class PerceptionModule:
             color = cone_positions[i][2]
 
             # Apply Z-smoothing
-            key = (color, int(u // 10), int(v // 10))
-            Z = self.smooth_z(key, Z)
+            #key = (color, int(u // 10), int(v // 10))
+            #Z = self.smooth_z(key, Z)
+
 
             X = round(X, 2)
             Y = round(Y, 2)
