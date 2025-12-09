@@ -168,7 +168,7 @@ class PerceptionModule:
                 self.contour_centers.append(self.current_center)
 
                 # Draw bounding box
-                cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
+                #cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
         return self.contour_centers
 
@@ -241,9 +241,8 @@ class PerceptionModule:
             # Use config max_depth
             if Z < self.max_depth:
                 world_cones.append((X, Z, color, u, v))
-                cv2.circle(img, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
-                cv2.putText(img, f" c: {color} coo: {[X, Z]}", (int(u), int(v)),
-                            cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
+                #cv2.circle(img, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
+                #cv2.putText(img, f" c: {color} coo: {[X, Z]}", (int(u), int(v)), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
 
         return world_cones, img
 
@@ -254,7 +253,7 @@ class PerceptionModule:
             return [], None
 
         depth_intrin = self.update_intrinsics(depth_frame)
-        depth_frame = self.spatial_filter(depth_frame)
+        #depth_frame = self.spatial_filter(depth_frame)
         frame_HSV, img = self.color_space_conversion(color_frame)
         clean_mask_y, clean_mask_b = self.color_detector(frame_HSV)
         contours_y, contours_b = self.find_contour(clean_mask_y, clean_mask_b)
