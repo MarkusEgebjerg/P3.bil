@@ -129,9 +129,6 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     logger.info("=" * 60)
-    logger.info("AAU RACING - AUTONOMOUS RC CAR")
-    logger.info("=" * 60)
-    logger.info("Controls:")
     logger.info("  Ctrl+C - Emergency stop")
     logger.info("=" * 60)
 
