@@ -7,8 +7,8 @@ All tunable parameters in one place for easy adjustment
 # CAMERA SETTINGS
 # ============================================================================
 CAMERA_CONFIG = {
-    'resolution_x': 1280,
-    'resolution_y': 720,
+    'resolution_x': 640,
+    'resolution_y': 360,
     'fps': 30,
     'crop_top_ratio': 0.25,      # Crop top 25% of image
     'crop_bottom_ratio': 0.75,   # Keep until 75% of image
