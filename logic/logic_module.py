@@ -2,9 +2,9 @@ import numpy as np
 import cv2
 
 class LogicModule:
-    def __init__(self, lookahead=0.5, track_width_offset=0.3, max_pairs=4):
+    def __init__(self, lookahead=0.5, track_width=0.3, max_pairs=4):
         self.l = lookahead
-        self.WD = track_width_offset
+        self.WD = track_width
         self.max_p = max_pairs
 
     def cone_sorting(self, world_cones):
