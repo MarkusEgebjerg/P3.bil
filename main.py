@@ -22,9 +22,9 @@ class Perception_Module:
         self.depth_scale = self.depth_sensor.get_depth_scale()
         self.depth_intrin = None
 
-        self.lowerYellow = np.array([22, 110, 120])
+        self.lowerYellow = np.array([22, 140, 120])
         self.upperYellow = np.array([33, 255, 255])
-        self.lowerBlue = np.array([100, 120, 60])
+        self.lowerBlue = np.array([100, 120, 80])
         self.upperBlue = np.array([135, 255, 255])
 
         self.z_window_size = 5  # how many past Z values to remember
@@ -34,9 +34,13 @@ class Perception_Module:
         self.kernel = np.ones((2, 3))
         self.afvig = 25
 
-        self.spatial = rs.spatial_filter()
+        #self.spatial = rs.spatial_filter()
 
         self.logic = Logic_module()
+
+        #self.color_stream = self.stream.get_stream(rs.stream.color)
+        #self.intr = self.color_stream.as_video_stream_profile().get_intrinsics()
+
 
     def get_frame(self):
         frameset = self.pipe.wait_for_frames()
@@ -132,6 +136,7 @@ class Perception_Module:
                 self.contour_centers.append(self.current_center)
 
                 cv2.rectangle(color_array, (x, y), (x + w, y + h), (255, 0, 0), 2)
+                cv2.putText(color_array, f'x: {x}, y: {y}, w: {w}, h:{h}', (x,y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 255)
 
         return self.contour_centers
 
@@ -180,7 +185,7 @@ class Perception_Module:
             print(f'X: {X}')
 
 
-            if Z < 6:
+            if Z < 3:
 
                 world_cones.append((X, Z, color, u, v))
                 cv2.circle(color_array, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
@@ -197,7 +202,7 @@ class Perception_Module:
             return True
 
         depth_intrin = self.update_intrinsics(depth_frame)
-        depth_frame = self.spatial_filter(depth_frame)
+        #depth_frame = self.spatial_filter(depth_frame)
         frame_HSV, color_array = self.color_space_conversion(color_frame)
         clean_mask_y, clean_mask_b = self.color_detector(frame_HSV)
         contours_y, contours_b = self.contour_finder(clean_mask_y, clean_mask_b)
