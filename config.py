@@ -7,8 +7,8 @@ All tunable parameters in one place for easy adjustment
 # CAMERA SETTINGS
 # ============================================================================
 CAMERA_CONFIG = {
-    'resolution_x': 640,
-    'resolution_y': 360,
+    'resolution_x': 1280,
+    'resolution_y': 720,
     'fps': 30,
     'crop_top_ratio': 0.25,      # Crop top 25% of image
     'crop_bottom_ratio': 0.75,   # Keep until 75% of image
@@ -18,9 +18,9 @@ CAMERA_CONFIG = {
 # COLOR DETECTION THRESHOLDS (HSV)
 # ============================================================================
 COLOR_THRESHOLDS = {
-    'yellow_lower': [22, 110, 120],
+    'yellow_lower': [22, 140, 120],
     'yellow_upper': [33, 255, 255],
-    'blue_lower': [100, 120, 60],
+    'blue_lower': [100, 120, 80],
     'blue_upper': [135, 255, 255],
 }
 
@@ -30,7 +30,7 @@ COLOR_THRESHOLDS = {
 PERCEPTION_CONFIG = {
     'min_contour_area': 30,           # Minimum pixels for valid cone
     'neighbor_distance': 25,          # Max pixels apart for same cone
-    'max_depth': 6.0,                 # Max depth in meters
+    'max_depth': 3.0,                 # Max depth in meters
     'z_smoothing_window': 5,          # Frames for depth smoothing
     'depth_offset': 180,              # Pixel offset for depth sampling
 }

@@ -1,9 +1,4 @@
 #!/usr/bin/env python3
-"""
-Arduino Auto-Upload Script
-Automatically compiles and uploads Arduino sketch when Docker container starts
-"""
-
 import subprocess
 import sys
 import time

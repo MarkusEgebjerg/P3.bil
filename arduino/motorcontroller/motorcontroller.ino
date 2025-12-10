@@ -1,13 +1,3 @@
-/*
- * AAU Racing - Motor Controller (FIXED VERSION)
- *
- * Controls servo steering and H-Bridge motor driver
- * Receives commands via serial: "angle,speed\n"
- *
- * Version: 1.1 - Fixed bugs and improved stability
- * Board: Arduino Nano/Uno
- */
-
 #include <Servo.h>
 
 Servo steering;
@@ -23,7 +13,7 @@ const int R_EN = 8;  // Right Enable
 const unsigned long TIMEOUT_MS = 500;  // Stop if no data for 0.5 seconds
 unsigned long lastSignalTime = 0;
 
-bool motorActive = false;  // FIX: Added semicolon (was missing!)
+bool motorActive = false;
 
 void setup() {
   Serial.begin(115200);
@@ -41,14 +31,12 @@ void setup() {
   // Start with everything off
   digitalWrite(RPWM, LOW);
   digitalWrite(LPWM, LOW);
-  digitalWrite(R_EN, LOW);  // FIX: Start disabled
-  digitalWrite(L_EN, LOW);  // FIX: Start disabled
+  digitalWrite(R_EN, LOW);
+  digitalWrite(L_EN, LOW);
 
   Serial.println("READY");
-  Serial.println("AAU Racing Motor Controller v1.1");
   lastSignalTime = millis();
 }
-
 
 void loop() {
   // Enable H-Bridge when active
@@ -56,7 +44,6 @@ void loop() {
     digitalWrite(R_EN, HIGH);
     digitalWrite(L_EN, HIGH);
   } else {
-    // FIX: Explicitly disable when not active
     digitalWrite(R_EN, LOW);
     digitalWrite(L_EN, LOW);
   }

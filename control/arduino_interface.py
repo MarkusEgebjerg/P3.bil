@@ -83,7 +83,7 @@ class ArduinoInterface:
             speed = max(0, min(255, int(speed)))
 
             # Convert to protocol format
-            steering_int = int(steering * 10)  # -300 to 300
+            steering_int = int(steering * 10)
 
             # Format message
             msg = f"{steering_int},{speed}\n"
@@ -93,8 +93,8 @@ class ArduinoInterface:
             self.command_count += 1
             self.last_command = (steering, speed)
 
-            # Check for acknowledgment occasionally (every 30 commands)
-            # This prevents overwhelming the serial buffer with reads
+            # Check for acknowledgment every 30 commands
+            # This prevents overwhelming the serial buffer
             if self.command_count % 30 == 0:
                 ack_received = False
                 check_start = time.time()
