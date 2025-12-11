@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 import pyrealsense2 as rs
 import logging
-import time
 
 # Import config
 try:
@@ -22,7 +21,7 @@ except ImportError:
     PERCEPTION_CONFIG = {'min_contour_area': 30, 'neighbor_distance': 25, 'max_depth': 6.0,
                          'z_smoothing_window': 5, 'depth_offset': 180}
     MORPHOLOGY_CONFIG = {'kernel_size': (2, 3), 'erosion_iterations': 2, 'dilation_iterations': 10}
-    SPATIAL_FILTER = {'magnitude': 5, 'smooth_alpha': 0.5, 'smooth_delta': 50, 'holes_fill': 5}
+    SPATIAL_FILTER = {'magnitude': 5, 'smooth_alpha': 1, 'smooth_delta': 50, 'holes_fill': 0}
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +51,11 @@ class PerceptionModule:
 
         # --- Warm-up RealSense pipeline ---
         logger.info("Warming up camera...")
-        self._warmup_camera()
+        for i in range(30):
+            try:
+                frames = self.pipe.wait_for_frames(timeout_ms=500)
+            except RuntimeError:
+                pass
 
         self.depth_sensor = self.stream.get_device().first_depth_sensor()
         self.depth_scale = self.depth_sensor.get_depth_scale()
@@ -79,74 +82,20 @@ class PerceptionModule:
         self.crop_top = CAMERA_CONFIG['crop_top_ratio']
         self.crop_bottom = CAMERA_CONFIG['crop_bottom_ratio']
 
-        # Spatial filter - FIXED: configure before use
+        # Spatial filter
         self.spatial = rs.spatial_filter()
-        self._configure_spatial_filter()
+        self.spatial_config = SPATIAL_FILTER
 
         # Z-smoothing
         self.z_window_size = PERCEPTION_CONFIG['z_smoothing_window']
         self.z_histories = {}
 
-        # Health tracking
-        self.frame_count = 0
-        self.error_count = 0
-        self.last_valid_cones = []
-
         logger.info("Perception module initialized successfully")
 
-    def _warmup_camera(self):
-        """Properly warm up the camera and clear buffers"""
-        warmup_frames = 30
-        for i in range(warmup_frames):
-            try:
-                frameset = self.pipe.wait_for_frames(timeout_ms=1000)
-                # Explicitly release warmup frames
-                frameset.release()
-            except RuntimeError as e:
-                logger.debug(f"Warmup frame {i} dropped (expected): {e}")
-
-        # Additional buffer clearing
-        time.sleep(0.5)
-        try:
-            while self.pipe.poll_for_frames():
-                pass
-        except:
-            pass
-
-        logger.info("Camera warm-up complete")
-
-    def _configure_spatial_filter(self):
-        """Configure spatial filter with all options BEFORE processing"""
-        try:
-            self.spatial.set_option(rs.option.filter_magnitude, SPATIAL_FILTER['magnitude'])
-            self.spatial.set_option(rs.option.filter_smooth_alpha, SPATIAL_FILTER['smooth_alpha'])
-            self.spatial.set_option(rs.option.filter_smooth_delta, SPATIAL_FILTER['smooth_delta'])
-            self.spatial.set_option(rs.option.holes_fill, SPATIAL_FILTER['holes_fill'])
-            logger.info("Spatial filter configured successfully")
-        except Exception as e:
-            logger.warning(f"Could not configure spatial filter: {e}")
-
     def get_frame(self):
-        """Get aligned frames with proper error handling"""
-        try:
-            frameset = self.pipe.wait_for_frames(timeout_ms=5000)
-            frames = self.align.process(frameset)
-
-            depth_frame = frames.get_depth_frame()
-            color_frame = frames.get_color_frame()
-
-            # Validate frames
-            if not depth_frame or not color_frame:
-                logger.warning("Invalid frame received - missing depth or color")
-                return None, None
-
-            self.frame_count += 1
-            return depth_frame, color_frame
-
-        except RuntimeError as e:
-            self.error_count += 1
-            logger.error(f"Frame capture error: {e}")
-            return None, None
+        frameset = self.pipe.wait_for_frames()
+        frames = self.align.process(frameset)
+        return frames.get_depth_frame(), frames.get_color_frame()
 
     def update_intrinsics(self, depth_frame):
         if self.depth_intrin is None:
@@ -154,13 +103,18 @@ class PerceptionModule:
         return self.depth_intrin
 
     def spatial_filter(self, depth_frame):
-        """Apply spatial filtering - FIXED: set options before process"""
-        try:
-            filtered_frame = self.spatial.process(depth_frame)
-            return filtered_frame.as_depth_frame()
-        except Exception as e:
-            logger.warning(f"Spatial filter failed: {e}, returning unfiltered frame")
-            return depth_frame
+        """Apply spatial filtering using config values"""
+        depth_frame = self.spatial.process(depth_frame)
+
+        self.spatial.set_option(rs.option.filter_magnitude, self.spatial_config['magnitude'])
+        self.spatial.set_option(rs.option.filter_smooth_alpha, self.spatial_config['smooth_alpha'])
+        self.spatial.set_option(rs.option.filter_smooth_delta, self.spatial_config['smooth_delta'])
+        depth_frame = self.spatial.process(depth_frame)
+
+        self.spatial.set_option(rs.option.holes_fill, self.spatial_config['holes_fill'])
+        depth_frame = self.spatial.process(depth_frame)
+
+        return depth_frame.as_depth_frame()
 
     def color_space_conversion(self, color_frame):
         """Convert to HSV and crop using config values"""
@@ -201,7 +155,7 @@ class PerceptionModule:
 
             for contour in contour_list:
                 area = cv2.contourArea(contour)
-                if area < self.min_contour_area:
+                if area < self.min_contour_area:  # Use config value
                     continue
 
                 # Bounding box method
@@ -212,6 +166,9 @@ class PerceptionModule:
                 color_label = "Blue" if i == 0 else "Yellow"
                 self.current_center = (cx, cy, color_label)
                 self.contour_centers.append(self.current_center)
+
+                # Draw bounding box
+                #cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
         return self.contour_centers
 
@@ -249,7 +206,7 @@ class PerceptionModule:
         history = self.z_histories.get(key, [])
         history.append(new_z)
 
-        if len(history) > self.z_window_size:
+        if len(history) > self.z_window_size:  # Use config value
             history.pop(0)
 
         self.z_histories[key] = history
@@ -260,67 +217,54 @@ class PerceptionModule:
         world_cones = []
 
         for i in range(len(cone_positions)):
-            try:
-                u = float(cone_positions[i][0])
-                v = float(cone_positions[i][1])
+            u = float(cone_positions[i][0])
+            v = float(cone_positions[i][1])
 
-                # Use config depth_offset
-                depth_m = float(depth_frame.get_distance(int(u), int(v) + self.depth_offset))
+            # Use config depth_offset
+            depth_m = float(depth_frame.get_distance(int(u), int(v) + self.depth_offset))
 
-                if depth_m <= 0:
-                    continue
-
-                X, Y, Z = rs.rs2_deproject_pixel_to_point(depth_intrin, [u, v], depth_m)
-                color = cone_positions[i][2]
-
-                X = round(X, 2)
-                Y = round(Y, 2)
-                Z = round(Z, 2)
-
-                # Use config max_depth
-                if Z < self.max_depth:
-                    world_cones.append((X, Z, color, u, v))
-            except Exception as e:
-                logger.debug(f"Error processing cone position {i}: {e}")
+            if depth_m <= 0:
                 continue
 
-        if world_cones:
-            self.last_valid_cones = world_cones
+            X, Y, Z = rs.rs2_deproject_pixel_to_point(depth_intrin, [u, v], depth_m)
+            color = cone_positions[i][2]
+
+            # Apply Z-smoothing
+            #key = (color, int(u // 10), int(v // 10))
+            #Z = self.smooth_z(key, Z)
+
+
+            X = round(X, 2)
+            Y = round(Y, 2)
+            Z = round(Z, 2)
+
+            # Use config max_depth
+            if Z < self.max_depth:
+                world_cones.append((X, Z, color, u, v))
+                #cv2.circle(img, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
+                #cv2.putText(img, f" c: {color} coo: {[X, Z]}", (int(u), int(v)), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
 
         return world_cones, img
 
     def run(self):
-        """Main perception pipeline with error handling"""
-        try:
-            depth_frame, color_frame = self.get_frame()
-            if depth_frame is None or color_frame is None:
-                logger.debug("Skipping frame - invalid capture")
-                return self.last_valid_cones, None
+        """Main perception pipeline"""
+        depth_frame, color_frame = self.get_frame()
+        if depth_frame is None:
+            return [], None
 
-            depth_intrin = self.update_intrinsics(depth_frame)
-            # Spatial filter disabled by default due to processing block issues
-            # depth_frame = self.spatial_filter(depth_frame)
+        depth_intrin = self.update_intrinsics(depth_frame)
+        #depth_frame = self.spatial_filter(depth_frame)
+        frame_HSV, img = self.color_space_conversion(color_frame)
+        clean_mask_y, clean_mask_b = self.color_detector(frame_HSV)
+        contours_y, contours_b = self.find_contour(clean_mask_y, clean_mask_b)
+        contour_centers = self.find_centers(contours_y, contours_b, img)
+        cone_positions, img = self.contour_control(contour_centers, img)
+        world_pos, img = self.world_positioning(cone_positions, depth_frame, depth_intrin, img)
 
-            frame_HSV, img = self.color_space_conversion(color_frame)
-            clean_mask_y, clean_mask_b = self.color_detector(frame_HSV)
-            contours_y, contours_b = self.find_contour(clean_mask_y, clean_mask_b)
-            contour_centers = self.find_centers(contours_y, contours_b, img)
-            cone_positions, img = self.contour_control(contour_centers, img)
-            world_pos, img = self.world_positioning(cone_positions, depth_frame, depth_intrin, img)
-
-            return world_pos, img
-
-        except Exception as e:
-            self.error_count += 1
-            logger.error(f"Perception pipeline error: {e}", exc_info=False)
-            return self.last_valid_cones, None
+        return world_pos, img
 
     def shutdown(self):
         """Clean shutdown of camera"""
         logger.info("Shutting down perception module...")
-        try:
-            self.pipe.stop()
-            cv2.destroyAllWindows()
-            logger.info(f"Perception stats - Frames: {self.frame_count}, Errors: {self.error_count}")
-        except Exception as e:
-            logger.error(f"Error during camera shutdown: {e}")
+        self.pipe.stop()
+        cv2.destroyAllWindows()
