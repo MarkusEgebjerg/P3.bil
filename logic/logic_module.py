@@ -30,6 +30,46 @@ class LogicModule:
 
             midpoints.append((x, z, u, v))
 
+
+        for i in len(blue_cones):
+            if blue_cones[i][0] >= 1280/2: right_turn = 1
+
+        for i in len(yellow_cones):
+            if yellow_cones[i][0] <= 1280/2: left_turn = 1
+
+
+        if len(yellow_cones) == 0 and right_turn == 1: #right turn
+            #for i in len(blue_cones):
+            width = 80
+            first_vector = (blue_cones[0][0], blue_cones[0][1]) #vector/point to first blue cone
+            second_vector = (blue_cones[1][0] - blue_cones[0][0], blue_cones[1][1] - blue_cones[0][1]) #vector from first blue cone to second blue cone
+            halfway_point = (first_vector[0] - second_vector[0]/2  , first_vector[1] - second_vector[1]/2) #Halfwaypoint between first blue cone and second blue cone
+            length = np.hypot(second_vector[0], second_vector[1])
+
+            second_vector_para = (second_vector[0]/length, second_vector[1]/length)
+            third_vector = (second_vector_para[0] * width/2 * 1 , second_vector_para[1] * width/2 * -1)
+            midpoint = (third_vector[0] + halfway_point[0], third_vector[1] + halfway_point[1])
+
+            midpoints.append(midpoint)
+
+        if len(blue_cones) == 0 and left_turn == 1: #left turn
+
+            width = 80
+            first_vector = (blue_cones[0][0], blue_cones[0][1])  # vector/point to first blue cone
+            second_vector = (blue_cones[1][0] - blue_cones[0][0],
+                             blue_cones[1][1] - blue_cones[0][1])  # vector from first blue cone to second blue cone
+            halfway_point = (first_vector[0] - second_vector[0] / 2, first_vector[1] - second_vector[
+                1] / 2)  # Halfwaypoint between first blue cone and second blue cone
+            length = np.hypot(second_vector[0], second_vector[1])
+
+            second_vector_para = (second_vector[0] / length, second_vector[1] / length)
+            third_vector = (second_vector_para[0] * width / 2 * 1, second_vector_para[1] * width / 2 * -1)
+            midpoint = (third_vector[0] + halfway_point[0], third_vector[1] + halfway_point[1])
+
+            midpoints.append(midpoint)
+
+
+
             # Draw midpoints if image is provided
             if img is not None:
                 try:
@@ -41,6 +81,8 @@ class LogicModule:
 
         return midpoints
 
+
+
     def Interpolation(self, midpoints):
         """
         Accepts midpoints as list of (x, z, u, v).
@@ -49,8 +91,15 @@ class LogicModule:
         if not midpoints:
             return None
 
+
+        #mulig fejl i kode!!
         xs = sorted([m[0] for m in midpoints])
         zs = sorted([m[1] + self.WD for m in midpoints])  # apply width offset to z-values
+
+        #ændring: Sorter hver tuple i midpoints før de bliver adskilt. Så vi sørger for at fx x_0 og Z_0 passer sammen for middpunktet.
+        #midpoints.sort(key=lambda x: x[1])
+        #xs = [m[0] for m in midpoints]
+        #zs = [m[1] + self.WD for m in midpoints] # apply width offset to z-values
 
         x0, z0 = xs[0], zs[0]
         dist0 = np.hypot(x0, z0)
