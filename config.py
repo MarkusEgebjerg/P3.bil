@@ -30,7 +30,7 @@ COLOR_THRESHOLDS = {
 PERCEPTION_CONFIG = {
     'min_contour_area': 30,           # Minimum pixels for valid cone
     'neighbor_distance': 25,          # Max pixels apart for same cone
-    'max_depth': 3.0,                 # Max depth in meters
+    'max_depth': 6.0,                 # Max depth in meters
     'z_smoothing_window': 5,          # Frames for depth smoothing
     'depth_offset': 180,              # Pixel offset for depth sampling
 }

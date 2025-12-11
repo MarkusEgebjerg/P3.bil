@@ -3,9 +3,11 @@ import sys
 import time
 import logging
 from datetime import datetime
-from perception.perception_module import PerceptionModule
-from logic.logic_module import LogicModule
-from control.arduino_interface import ArduinoInterface
+
+# FIXED: Corrected import paths
+from perception_module import PerceptionModule
+from logic_module import LogicModule
+from arduino_interface import ArduinoInterface
 
 # Configure logging
 logging.basicConfig(
@@ -18,10 +20,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global variables for cleanup
+# Global variables for cleanup - FIXED: Added shutdown flags
 perception = None
 arduino = None
 logic = None
+shutdown_complete = False
 
 
 class PerformanceMonitor:
@@ -95,6 +98,12 @@ class SafetyMonitor:
 
 def signal_handler(sig, frame):
     """Handle Ctrl+C and other termination signals"""
+    global perception, arduino, logic, shutdown_complete
+
+    if shutdown_complete:
+        logger.warning("Shutdown already in progress, forcing exit...")
+        sys.exit(1)
+
     logger.info("Shutdown signal received! Cleaning up...")
 
     # Stop motors immediately
@@ -118,11 +127,12 @@ def signal_handler(sig, frame):
             logger.error(f"Error closing camera: {e}")
 
     logger.info("Shutdown complete. Exiting.")
+    shutdown_complete = True
     sys.exit(0)
 
 
 def main():
-    global perception, arduino, logic
+    global perception, arduino, logic, shutdown_complete
 
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
@@ -162,9 +172,15 @@ def main():
             else:
                 logger.error("Max retries reached. Exiting.")
                 if perception:
-                    perception.shutdown()
+                    try:
+                        perception.shutdown()
+                    except:
+                        pass
                 if arduino:
-                    arduino.close()
+                    try:
+                        arduino.close()
+                    except:
+                        pass
                 sys.exit(1)
 
     # Main control loop
@@ -174,8 +190,6 @@ def main():
         stats_interval = 15
 
         while True:
-            loop_start = time.time()
-
             try:
                 # Perception
                 cones_world, img = perception.run()
@@ -206,6 +220,7 @@ def main():
                 # Performance monitoring
                 loop_time = perf_monitor.update()
                 loop_count += 1
+
                 # Periodic stats logging
                 if loop_count % stats_interval == 0:
                     stats = perf_monitor.get_stats()
@@ -230,33 +245,35 @@ def main():
     except Exception as e:
         logger.error(f"Fatal error in control loop: {e}", exc_info=True)
     finally:
-        # Cleanup
-        logger.info("Performing cleanup...")
+        # Cleanup - FIXED: Only run once
+        if not shutdown_complete:
+            logger.info("Performing cleanup...")
 
-        if arduino:
-            try:
-                logger.info("Stopping motors...")
-                arduino.send(0, 0)
-                time.sleep(0.2)
-                arduino.close()
-                logger.info("Arduino connection closed.")
-            except Exception as e:
-                logger.error(f"Error during Arduino cleanup: {e}")
+            if arduino:
+                try:
+                    logger.info("Stopping motors...")
+                    arduino.send(0, 0)
+                    time.sleep(0.2)
+                    arduino.close()
+                    logger.info("Arduino connection closed.")
+                except Exception as e:
+                    logger.error(f"Error during Arduino cleanup: {e}")
 
-        if perception:
-            try:
-                perception.shutdown()
-                logger.info("Camera closed.")
-            except Exception as e:
-                logger.error(f"Error during camera cleanup: {e}")
+            if perception:
+                try:
+                    perception.shutdown()
+                    logger.info("Camera closed.")
+                except Exception as e:
+                    logger.error(f"Error during camera cleanup: {e}")
 
-        # Final stats
-        stats = perf_monitor.get_stats()
-        if stats:
-            logger.info(f"Final statistics - Total loops: {loop_count}, "
-                        f"Average FPS: {stats['avg_fps']:.1f}")
+            # Final stats
+            stats = perf_monitor.get_stats()
+            if stats:
+                logger.info(f"Final statistics - Total loops: {loop_count}, "
+                            f"Average FPS: {stats['avg_fps']:.1f}")
 
-        logger.info("Shutdown complete.")
+            logger.info("Shutdown complete.")
+            shutdown_complete = True
 
 
 if __name__ == "__main__":
