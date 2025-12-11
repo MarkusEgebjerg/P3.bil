@@ -5,9 +5,9 @@ import logging
 from datetime import datetime
 
 # FIXED: Corrected import paths
-from perception_module import PerceptionModule
-from logic_module import LogicModule
-from arduino_interface import ArduinoInterface
+from perception.perception_module import PerceptionModule
+from logic.logic_module import LogicModule
+from control.arduino_interface import ArduinoInterface
 
 # Configure logging
 logging.basicConfig(
