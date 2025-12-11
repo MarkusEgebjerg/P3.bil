@@ -79,7 +79,7 @@ void loop() {
     // --- STEERING ---
     // Python sends angle * 10 (e.g., -300 to 300)
     // Map -300/300 to servo 60/120
-    int servo_val = map(raw_angle, -300, 300, 50, 130);
+    int servo_val = map(raw_angle-20, -300, 300, 50, 130);
     servo_val = constrain(servo_val, 50, 130);
     steering.write(servo_val);
 

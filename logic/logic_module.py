@@ -50,8 +50,8 @@ class LogicModule:
                 dir_x = dx / length
                 dir_z = dz / length
 
-                perp_x = dir_z
-                perp_z = -dir_x
+                perp_x = dir_x
+                perp_z = -dir_z
 
                 midpoint_x = halfway_x + perp_x * width / 2.0
                 midpoint_z = halfway_z + perp_z * width / 2.0
@@ -75,8 +75,8 @@ class LogicModule:
                 dir_x = dx / length
                 dir_z = dz / length
 
-                perp_x = dir_z
-                perp_z = -dir_x
+                perp_x = dir_x
+                perp_z = -dir_z
 
                 midpoint_x = halfway_x + perp_x * width / 2.0
                 midpoint_z = halfway_z + perp_z * width / 2.0
