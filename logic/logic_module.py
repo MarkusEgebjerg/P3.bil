@@ -31,53 +31,57 @@ class LogicModule:
             midpoints.append((x, z, u, v))
 
 
-        for i in len(blue_cones):
-            if blue_cones[i][0] >= 1280/2: right_turn = 1
-
-        for i in len(yellow_cones):
-            if yellow_cones[i][0] <= 1280/2: left_turn = 1
 
 
-        if len(yellow_cones) == 0 and right_turn == 1: #right turn
+        if len(yellow_cones) == 0 and len(blue_cones) >= 2: #right turn
             #for i in len(blue_cones):
             width = 80
-            first_vector = (blue_cones[0][0], blue_cones[0][1]) #vector/point to first blue cone
-            second_vector = (blue_cones[1][0] - blue_cones[0][0], blue_cones[1][1] - blue_cones[0][1]) #vector from first blue cone to second blue cone
-            halfway_point = (first_vector[0] - second_vector[0]/2  , first_vector[1] - second_vector[1]/2) #Halfwaypoint between first blue cone and second blue cone
-            length = np.hypot(second_vector[0], second_vector[1])
+            x0, z0 = blue_cones[0][0], blue_cones[0][1]
+            x1, z1 = blue_cones[1][0], blue_cones[1][1]
 
-            second_vector_para = (second_vector[0]/length, second_vector[1]/length)
-            third_vector = (second_vector_para[0] * width/2 * 1 , second_vector_para[1] * width/2 * -1)
-            midpoint = (third_vector[0] + halfway_point[0], third_vector[1] + halfway_point[1])
+            dx = x1 - x0
+            dz = z1 - z0
 
-            midpoints.append(midpoint)
+            halfway_x = x0 + dx / 2.0
+            halfway_z = z0 + dz / 2.0
 
-        if len(blue_cones) == 0 and left_turn == 1: #left turn
+            length = np.hypot(dx, dz)
+            if length > 1e-6:
+                dir_x = dx / length
+                dir_z = dz / length
 
+                perp_x = dir_z
+                perp_z = -dir_x
+
+                midpoint_x = halfway_x + perp_x * width / 2.0
+                midpoint_z = halfway_z + perp_z * width / 2.0
+
+                midpoints.append((midpoint_x, midpoint_z))
+
+        if len(blue_cones) == 0 and len(yellow_cones) >= 2: #left turn
+            # for i in len(yellow_cones):
             width = 80
-            first_vector = (blue_cones[0][0], blue_cones[0][1])  # vector/point to first blue cone
-            second_vector = (blue_cones[1][0] - blue_cones[0][0],
-                             blue_cones[1][1] - blue_cones[0][1])  # vector from first blue cone to second blue cone
-            halfway_point = (first_vector[0] - second_vector[0] / 2, first_vector[1] - second_vector[
-                1] / 2)  # Halfwaypoint between first blue cone and second blue cone
-            length = np.hypot(second_vector[0], second_vector[1])
+            x0, z0 = yellow_cones[0][0], yellow_cones[0][1]
+            x1, z1 = yellow_cones[1][0], yellow_cones[1][1]
 
-            second_vector_para = (second_vector[0] / length, second_vector[1] / length)
-            third_vector = (second_vector_para[0] * width / 2 * 1, second_vector_para[1] * width / 2 * -1)
-            midpoint = (third_vector[0] + halfway_point[0], third_vector[1] + halfway_point[1])
+            dx = x1 - x0
+            dz = z1 - z0
 
-            midpoints.append(midpoint)
+            halfway_x = x0 + dx / 2.0
+            halfway_z = z0 + dz / 2.0
 
+            length = np.hypot(dx, dz)
+            if length > 1e-6:
+                dir_x = dx / length
+                dir_z = dz / length
 
+                perp_x = dir_z
+                perp_z = -dir_x
 
-            # Draw midpoints if image is provided
-            if img is not None:
-                try:
-                    cv2.circle(img, (u, v), 4, (0, 255, 0), -1)
-                    cv2.putText(img, f"{round(x,2)},{round(z,2)}", (u+5, v-5),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,255,0), 1)
-                except Exception:
-                    pass
+                midpoint_x = halfway_x + perp_x * width / 2.0
+                midpoint_z = halfway_z + perp_z * width / 2.0
+
+                midpoints.append((midpoint_x, midpoint_z))
 
         return midpoints
 
