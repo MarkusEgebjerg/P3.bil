@@ -111,12 +111,15 @@ class LogicModule:
         # need at least two points for quadratic solve
         if len(xs) < 2:
             return None
-
         x1, z1 = xs[1], zs[1]
-        A = x1**2 + z1**2
-        B = 2*(x0*x1 + z0*z1)
+
+        a = x1 - x0  # defined for easier following computation
+        b = z1 - z0  # defined for easier following computation
+
+        A = a**2 + b**2
+        B = 2*(x0 * a + z0 * b)
         C = x0**2 + z0**2 - self.l**2
-        D = B*B - 4*A*C
+        D = B**2 - 4*A*C
 
         if D < 0:
             return None
