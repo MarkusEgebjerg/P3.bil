@@ -63,7 +63,7 @@ LOGIC_CONFIG = {
 # CONTROL SETTINGS
 # ============================================================================
 CONTROL_CONFIG = {
-    'default_speed': 64,           # PWM value (0-255)
+    'default_speed': 100,           # PWM value (0-255)
     'max_steering_angle': 30.0,    # degrees
     'arduino_port': '/dev/ttyACM0',
     'arduino_baud': 115200,
