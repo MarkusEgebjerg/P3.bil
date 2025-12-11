@@ -171,7 +171,7 @@ def main():
     try:
         logger.info("Starting control loop...")
         loop_count = 0
-        stats_interval = 30
+        stats_interval = 15
 
         while True:
             loop_start = time.time()
@@ -206,7 +206,7 @@ def main():
                 # Performance monitoring
                 loop_time = perf_monitor.update()
                 loop_count += 1
-
+                cv2
                 # Periodic stats logging
                 if loop_count % stats_interval == 0:
                     stats = perf_monitor.get_stats()
