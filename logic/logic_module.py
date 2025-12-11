@@ -1,5 +1,4 @@
 import numpy as np
-import cv2
 
 class LogicModule:
     def __init__(self, lookahead=0.5, track_width=0.3, max_pairs=4):

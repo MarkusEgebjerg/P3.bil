@@ -44,7 +44,7 @@ MORPHOLOGY_CONFIG = {
 
 # Spatial filter settings (RealSense)
 SPATIAL_FILTER = {
-    'magnitude': 5,
+    'magnitude': 0,
     'smooth_alpha': 1,
     'smooth_delta': 50,
     'holes_fill': 0,
@@ -63,7 +63,7 @@ LOGIC_CONFIG = {
 # CONTROL SETTINGS
 # ============================================================================
 CONTROL_CONFIG = {
-    'default_speed': 32,           # PWM value (0-255)
+    'default_speed': 64,           # PWM value (0-255)
     'max_steering_angle': 30.0,    # degrees
     'arduino_port': '/dev/ttyACM0',
     'arduino_baud': 115200,

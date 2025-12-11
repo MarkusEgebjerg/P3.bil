@@ -206,7 +206,6 @@ def main():
                 # Performance monitoring
                 loop_time = perf_monitor.update()
                 loop_count += 1
-                cv2
                 # Periodic stats logging
                 if loop_count % stats_interval == 0:
                     stats = perf_monitor.get_stats()
