@@ -97,13 +97,9 @@ class LogicModule:
 
 
         #mulig fejl i kode!!
-        xs = sorted([m[0] for m in midpoints])
-        zs = sorted([m[1] + self.WD for m in midpoints])  # apply width offset to z-values
-
-        #ændring: Sorter hver tuple i midpoints før de bliver adskilt. Så vi sørger for at fx x_0 og Z_0 passer sammen for middpunktet.
-        #midpoints.sort(key=lambda x: x[1])
-        #xs = [m[0] for m in midpoints]
-        #zs = [m[1] + self.WD for m in midpoints] # apply width offset to z-values
+        midpoints.sort(key=lambda m: m[1])
+        xs = [m[0] for m in midpoints]
+        zs = [m[1] + self.WD for m in midpoints] # apply width offset to z-values
 
         x0, z0 = xs[0], zs[0]
         dist0 = np.hypot(x0, z0)
@@ -117,8 +113,8 @@ class LogicModule:
             return None
         x1, z1 = xs[1], zs[1]
 
-        a = x1 - x0  # defined for easier following computation
-        b = z1 - z0  # defined for easier following computation
+        a = x1 - x0
+        b = z1 - z0
 
         A = a**2 + b**2
         B = 2*(x0 * a + z0 * b)
