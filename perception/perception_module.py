@@ -292,8 +292,8 @@ class PerceptionModule:
         world_pos, img = self.world_positioning(cone_positions, depth_frame, depth_intrin, img)
 
         # Display camera feed
-        #cv2.imshow("Cone Positions", img)
-        #cv2.waitKey(1)  # 1ms delay - allows window to refresh
+        cv2.imshow("Cone Positions", img)
+        cv2.waitKey(1)  # 1ms delay - allows window to refresh
 
         # Record video if enabled
         if self.record_video and self.video_writer is not None:
