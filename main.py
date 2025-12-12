@@ -153,7 +153,7 @@ def main():
             logger.info(f"Initialization attempt {attempt + 1}/{max_retries}")
 
             logger.info("Starting perception module...")
-            perception = PerceptionModule()
+            perception = PerceptionModule(record_video=True, output_path="/mnt/user-data/outputs")
 
             logger.info("Starting logic module...")
             logic = LogicModule()

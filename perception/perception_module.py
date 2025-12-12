@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import pyrealsense2 as rs
 import logging
+from datetime import datetime
 
 # Import config
 try:
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class PerceptionModule:
-    def __init__(self):
+    def __init__(self, record_video=False, output_path="/mnt/user-data/outputs"):
         # --- RealSense Setup ---
         self.pipe = rs.pipeline()
         self.cfg = rs.config()
@@ -84,14 +85,43 @@ class PerceptionModule:
 
         # Spatial filter
         self.spatial = rs.spatial_filter()
-        self.spatial_config = SPATIAL_FILTER
+        try:
+            self.spatial_config = SPATIAL_FILTER
+        except NameError:
+            self.spatial_config = {'magnitude': 5, 'smooth_alpha': 1, 'smooth_delta': 50, 'holes_fill': 0}
 
         # Z-smoothing
         self.z_window_size = PERCEPTION_CONFIG['z_smoothing_window']
         self.z_histories = {}
 
-        logger.info("Perception module initialized successfully")
+        # --- VIDEO RECORDING SETUP (NEW) ---
+        self.record_video = record_video
+        self.output_path = output_path
+        self.video_writer = None
+        self.frame_count = 0
 
+        if self.record_video:
+            import os
+            from datetime import datetime
+
+            # Create output directory if it doesn't exist
+            os.makedirs(self.output_path, exist_ok=True)
+
+            # Setup video writer
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            video_filename = f"{self.output_path}/camera_feed_{timestamp}.avi"
+
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
+            fps = CAMERA_CONFIG['fps']
+
+            # Calculate frame size after cropping
+            crop_height = int(self.res_y * (self.crop_bottom - self.crop_top))
+            frame_size = (self.res_x, crop_height)
+
+            self.video_writer = cv2.VideoWriter(video_filename, fourcc, fps, frame_size)
+            logger.info(f"Recording video to: {video_filename}")
+
+        logger.info("Perception module initialized successfully")
     def get_frame(self):
         frameset = self.pipe.wait_for_frames()
         frames = self.align.process(frameset)
@@ -168,7 +198,7 @@ class PerceptionModule:
                 self.contour_centers.append(self.current_center)
 
                 # Draw bounding box
-                #cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
+                cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
 
         return self.contour_centers
 
@@ -241,7 +271,7 @@ class PerceptionModule:
             # Use config max_depth
             if Z < self.max_depth:
                 world_cones.append((X, Z, color, u, v))
-                #cv2.circle(img, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
+                cv2.circle(img, (cone_positions[i][0], cone_positions[i][1]), 4, (255, 255, 255), -1)
                 #cv2.putText(img, f" c: {color} coo: {[X, Z]}", (int(u), int(v)), cv2.FONT_HERSHEY_DUPLEX, 0.5, (0, 0, 255))
 
         return world_cones, img
@@ -253,7 +283,7 @@ class PerceptionModule:
             return [], None
 
         depth_intrin = self.update_intrinsics(depth_frame)
-        #depth_frame = self.spatial_filter(depth_frame)
+        # depth_frame = self.spatial_filter(depth_frame)
         frame_HSV, img = self.color_space_conversion(color_frame)
         clean_mask_y, clean_mask_b = self.color_detector(frame_HSV)
         contours_y, contours_b = self.find_contour(clean_mask_y, clean_mask_b)
@@ -261,10 +291,25 @@ class PerceptionModule:
         cone_positions, img = self.contour_control(contour_centers, img)
         world_pos, img = self.world_positioning(cone_positions, depth_frame, depth_intrin, img)
 
+        # Display camera feed
+        cv2.imshow("Cone Positions", img)
+        cv2.waitKey(1)  # 1ms delay - allows window to refresh
+
+        # Record video if enabled
+        if self.record_video and self.video_writer is not None:
+            self.video_writer.write(img)
+            self.frame_count += 1
+
         return world_pos, img
 
     def shutdown(self):
         """Clean shutdown of camera"""
         logger.info("Shutting down perception module...")
+
+        # Release video writer if recording
+        if self.video_writer is not None:
+            self.video_writer.release()
+            logger.info(f"Video recording saved ({self.frame_count} frames)")
+
         self.pipe.stop()
         cv2.destroyAllWindows()
