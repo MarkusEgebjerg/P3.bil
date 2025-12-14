@@ -39,7 +39,7 @@ PERCEPTION_CONFIG = {
 MORPHOLOGY_CONFIG = {
     'kernel_size': (2, 3),
     'erosion_iterations': 2,
-    'dilation_iterations': 10,
+    'dilation_iterations': 5,
 }
 
 # ============================================================================

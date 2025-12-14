@@ -85,7 +85,7 @@ void loop() {
     }
 
     int servo_val = (41.38 + (raw_angle/10)/0.49);
-
+    Serial.print(servo_val);
 
     servo_val = constrain(servo_val, 50, 130);
     steering.write(servo_val);
