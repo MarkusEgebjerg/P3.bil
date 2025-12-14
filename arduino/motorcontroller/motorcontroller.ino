@@ -84,7 +84,7 @@ void loop() {
         raw_angle = raw_angle + 2;
     }
 
-    int servo_val = (41.38 + raw_angle)/0.49
+    int servo_val = (41.38 + (raw_angle/10)/0.49);
 
 
     servo_val = constrain(servo_val, 50, 130);

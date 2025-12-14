@@ -96,16 +96,38 @@ class PerceptionModule:
         self.crop_top = CAMERA_CONFIG['crop_top_ratio']
         self.crop_bottom = CAMERA_CONFIG['crop_bottom_ratio']
 
-        # Spatial filter
-        self.spatial = rs.spatial_filter()
-        try:
-            self.spatial_config = SPATIAL_FILTER
-        except NameError:
-            self.spatial_config = {'magnitude': 5, 'smooth_alpha': 1, 'smooth_delta': 50, 'holes_fill': 0}
+        # Z-smoothing
+        self.z_window_size = PERCEPTION_CONFIG['z_smoothing_window']
+        self.z_histories = {}
+
+        # --- VIDEO RECORDING SETUP (NEW) ---
+        self.record_video = record_video
+        self.output_path = output_path
+        self.video_writer = None
+        self.frame_count = 0
+
+        if self.record_video:
+            import os
+            from datetime import datetime
+
+            # Create output directory if it doesn't exist
+            os.makedirs(self.output_path, exist_ok=True)
+
+            # Setup video writer
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            video_filename = f"{self.output_path}/camera_feed_{timestamp}.avi"
+
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
+            fps = CAMERA_CONFIG['fps']
+
+            # Calculate frame size after cropping
+            crop_height = int(self.res_y * (self.crop_bottom - self.crop_top))
+            frame_size = (self.res_x, crop_height)
+
+            self.video_writer = cv2.VideoWriter(video_filename, fourcc, fps, frame_size)
+            logger.info(f"Recording video to: {video_filename}")
 
         logger.info("Perception module initialized successfully")
-
-
     def get_frame(self):
         frameset = self.pipe.wait_for_frames()
         frames = self.align.process(frameset)
@@ -115,20 +137,6 @@ class PerceptionModule:
         if self.depth_intrin is None:
             self.depth_intrin = depth_frame.profile.as_video_stream_profile().get_intrinsics()
         return self.depth_intrin
-
-    def spatial_filter(self, depth_frame):
-        """Apply spatial filtering using config values"""
-        depth_frame = self.spatial.process(depth_frame)
-
-        self.spatial.set_option(rs.option.filter_magnitude, self.spatial_config['magnitude'])
-        self.spatial.set_option(rs.option.filter_smooth_alpha, self.spatial_config['smooth_alpha'])
-        self.spatial.set_option(rs.option.filter_smooth_delta, self.spatial_config['smooth_delta'])
-        depth_frame = self.spatial.process(depth_frame)
-
-        self.spatial.set_option(rs.option.holes_fill, self.spatial_config['holes_fill'])
-        depth_frame = self.spatial.process(depth_frame)
-
-        return depth_frame.as_depth_frame()
 
     def color_space_conversion(self, color_frame):
         """Convert to HSV and crop using config values"""
@@ -253,7 +261,6 @@ class PerceptionModule:
             return [], None
 
         depth_intrin = self.update_intrinsics(depth_frame)
-        # depth_frame = self.spatial_filter(depth_frame)
         frame_HSV, img = self.color_space_conversion(color_frame)
         clean_mask_y, clean_mask_b = self.color_detector(frame_HSV)
         contours_y, contours_b = self.find_contour(clean_mask_y, clean_mask_b)
@@ -261,12 +268,25 @@ class PerceptionModule:
         cone_positions, img = self.contour_control(contour_centers, img)
         world_pos, img = self.world_positioning(cone_positions, depth_frame, depth_intrin, img)
 
+        # Display camera feed
+        cv2.imshow("Cone Positions", img)
+        cv2.waitKey(1)  # 1ms delay - allows window to refresh
+
+        # Record video if enabled
+        if self.record_video and self.video_writer is not None:
+            self.video_writer.write(img)
+            self.frame_count += 1
+
         return world_pos, img
 
     def shutdown(self):
         """Clean shutdown of camera"""
         logger.info("Shutting down perception module...")
 
+        # Release video writer if recording
+        if self.video_writer is not None:
+            self.video_writer.release()
+            logger.info(f"Video recording saved ({self.frame_count} frames)")
 
         self.pipe.stop()
         cv2.destroyAllWindows()
