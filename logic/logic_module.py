@@ -1,10 +1,20 @@
 import numpy as np
 
+try:
+    from config import LOGIC_CONFIG
+except ImportError:
+    LOGIC_CONFIG = {
+        'lookahead_distance': 0.5,  # meters
+        'wheelbase': 0.3, # meters
+        'max_cone_pairs': 4,
+    }
+
 class LogicModule:
-    def __init__(self, lookahead=0.5, track_width=0.3, max_pairs=4):
-        self.l = lookahead
-        self.WD = track_width
-        self.max_p = max_pairs
+    def __init__(self):
+        self.l = LOGIC_CONFIG['lookahead_distance']
+        self.WD = LOGIC_CONFIG['wheelbase']
+        self.max_p = LOGIC_CONFIG['max_cone_pairs']
+
 
     def cone_sorting(self, world_cones):
         blue = [c for c in world_cones if c[2] == "Blue"]

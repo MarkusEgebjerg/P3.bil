@@ -15,14 +15,27 @@ try:
     )
 except ImportError:
     # Fallback to default values if config.py not found
-    CAMERA_CONFIG = {'resolution_x': 1280, 'resolution_y': 720, 'fps': 30,
-                     'crop_top_ratio': 0.25, 'crop_bottom_ratio': 0.75}
-    COLOR_THRESHOLDS = {'yellow_lower': [22, 110, 120], 'yellow_upper': [33, 255, 255],
-                        'blue_lower': [100, 120, 60], 'blue_upper': [135, 255, 255]}
-    PERCEPTION_CONFIG = {'min_contour_area': 30, 'neighbor_distance': 25, 'max_depth': 6.0,
-                         'z_smoothing_window': 5, 'depth_offset': 180}
-    MORPHOLOGY_CONFIG = {'kernel_size': (2, 3), 'erosion_iterations': 2, 'dilation_iterations': 10}
-    SPATIAL_FILTER = {'magnitude': 5, 'smooth_alpha': 1, 'smooth_delta': 50, 'holes_fill': 0}
+    CAMERA_CONFIG = {'resolution_x': 1280,
+                     'resolution_y': 720,
+                     'fps': 30,
+                     'crop_top_ratio': 0.25,
+                     'crop_bottom_ratio': 0.75}
+    COLOR_THRESHOLDS = {'yellow_lower': [22, 110, 120],
+                        'yellow_upper': [33, 255, 255],
+                        'blue_lower': [100, 120, 60],
+                        'blue_upper': [135, 255, 255]}
+    PERCEPTION_CONFIG = {'min_contour_area': 30,
+                         'neighbor_distance': 25,
+                         'max_depth': 6.0,
+                         'z_smoothing_window': 5,
+                         'depth_offset': 180}
+    MORPHOLOGY_CONFIG = {'kernel_size': (2, 3),
+                         'erosion_iterations': 2,
+                         'dilation_iterations': 10}
+    SPATIAL_FILTER = {'magnitude': 5,
+                      'smooth_alpha': 1,
+                      'smooth_delta': 50,
+                      'holes_fill': 0}
 
 logger = logging.getLogger(__name__)
 
@@ -90,38 +103,9 @@ class PerceptionModule:
         except NameError:
             self.spatial_config = {'magnitude': 5, 'smooth_alpha': 1, 'smooth_delta': 50, 'holes_fill': 0}
 
-        # Z-smoothing
-        self.z_window_size = PERCEPTION_CONFIG['z_smoothing_window']
-        self.z_histories = {}
-
-        # --- VIDEO RECORDING SETUP (NEW) ---
-        self.record_video = record_video
-        self.output_path = output_path
-        self.video_writer = None
-        self.frame_count = 0
-
-        if self.record_video:
-            import os
-            from datetime import datetime
-
-            # Create output directory if it doesn't exist
-            os.makedirs(self.output_path, exist_ok=True)
-
-            # Setup video writer
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            video_filename = f"{self.output_path}/camera_feed_{timestamp}.avi"
-
-            fourcc = cv2.VideoWriter_fourcc(*'XVID')
-            fps = CAMERA_CONFIG['fps']
-
-            # Calculate frame size after cropping
-            crop_height = int(self.res_y * (self.crop_bottom - self.crop_top))
-            frame_size = (self.res_x, crop_height)
-
-            self.video_writer = cv2.VideoWriter(video_filename, fourcc, fps, frame_size)
-            logger.info(f"Recording video to: {video_filename}")
-
         logger.info("Perception module initialized successfully")
+
+
     def get_frame(self):
         frameset = self.pipe.wait_for_frames()
         frames = self.align.process(frameset)
@@ -228,20 +212,6 @@ class PerceptionModule:
 
         return self.cone_positions, img
 
-    def smooth_z(self, key, new_z: float) -> float:
-        """Smooth Z values using rolling window from config"""
-        if new_z <= 0:
-            return new_z
-
-        history = self.z_histories.get(key, [])
-        history.append(new_z)
-
-        if len(history) > self.z_window_size:  # Use config value
-            history.pop(0)
-
-        self.z_histories[key] = history
-        return sum(history) / len(history)
-
     def world_positioning(self, cone_positions, depth_frame, depth_intrin, img):
         """Convert pixel positions to 3D world coordinates"""
         world_cones = []
@@ -291,25 +261,12 @@ class PerceptionModule:
         cone_positions, img = self.contour_control(contour_centers, img)
         world_pos, img = self.world_positioning(cone_positions, depth_frame, depth_intrin, img)
 
-        # Display camera feed
-        cv2.imshow("Cone Positions", img)
-        cv2.waitKey(1)  # 1ms delay - allows window to refresh
-
-        # Record video if enabled
-        if self.record_video and self.video_writer is not None:
-            self.video_writer.write(img)
-            self.frame_count += 1
-
         return world_pos, img
 
     def shutdown(self):
         """Clean shutdown of camera"""
         logger.info("Shutting down perception module...")
 
-        # Release video writer if recording
-        if self.video_writer is not None:
-            self.video_writer.release()
-            logger.info(f"Video recording saved ({self.frame_count} frames)")
 
         self.pipe.stop()
         cv2.destroyAllWindows()
