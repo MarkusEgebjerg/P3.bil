@@ -44,7 +44,7 @@ class LogicModule:
 
         if len(yellow_cones) == 0 and len(blue_cones) >= 2: #right turn
             #for i in len(blue_cones):
-            width = 80
+            width = 60
             x0, z0 = blue_cones[0][0], blue_cones[0][1]
             x1, z1 = blue_cones[1][0], blue_cones[1][1]
 
