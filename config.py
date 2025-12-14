@@ -55,8 +55,8 @@ LOGIC_CONFIG = {
 # CONTROL SETTINGS
 # ============================================================================
 CONTROL_CONFIG = {
-    'default_speed': 28,           # PWM value (0-255)
-    'max_steering_angle': 30.0,    # degrees
+    'default_speed': 40,           # PWM value (0-255)
+    'max_steering_angle': 30,    # degrees
     'arduino_port': '/dev/ttyACM0',
     'arduino_baud': 115200,
     'command_delay': 0.01,         # seconds between commands
@@ -66,7 +66,7 @@ CONTROL_CONFIG = {
 # SAFETY SETTINGS
 # ============================================================================
 SAFETY_CONFIG = {
-    'max_steering_angle': 30.0,            # Maximum steering in degrees
+    'max_steering_angle': 23.5,            # Maximum steering in degrees
     'no_cone_timeout': 5.0,                # Seconds before warning
     'max_consecutive_no_cones': 15,        # Frames before alarm
     'emergency_stop_speed': 0,             # Speed when emergency stop

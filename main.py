@@ -26,6 +26,17 @@ arduino = None
 logic = None
 shutdown_complete = False
 
+try:
+    from config import CONTROL_CONFIG
+except ImportError:
+    LOGIC_CONFIG = {
+        'default_speed': 40,  # PWM value (0-255)
+        'max_steering_angle': 30,  # degrees
+        'arduino_port': '/dev/ttyACM0',
+        'arduino_baud': 115200,
+        'command_delay': 0.01,
+    }
+
 
 class PerformanceMonitor:
     """Monitor loop performance and timing"""
@@ -207,12 +218,12 @@ def main():
                 if target:
                     angle = logic.steering_angle(target)
                     angle = safety_monitor.check_steering(angle)
-                    speed = 32
+                    speed = CONTROL_CONFIG['default_speed']
                 else:
                     if loop_count % 10 == 0:
                         logger.debug("No targets found")
                     angle = 0
-                    speed = 32
+                    speed = 0
 
                 # Send to Arduino
                 arduino.send(angle, speed)
