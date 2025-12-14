@@ -18,9 +18,9 @@ CAMERA_CONFIG = {
 # COLOR DETECTION THRESHOLDS (HSV)
 # ============================================================================
 COLOR_THRESHOLDS = {
-    'yellow_lower': [22, 140, 120],
+    'yellow_lower': [22, 110, 120],
     'yellow_upper': [33, 255, 255],
-    'blue_lower': [100, 120, 80],
+    'blue_lower': [100, 120, 60],
     'blue_upper': [135, 255, 255],
 }
 
@@ -30,7 +30,7 @@ COLOR_THRESHOLDS = {
 PERCEPTION_CONFIG = {
     'min_contour_area': 30,           # Minimum pixels for valid cone
     'neighbor_distance': 25,          # Max pixels apart for same cone
-    'max_depth': 6.0,                 # Max depth in meters
+    'max_depth': 3.0,                 # Max depth in meters
     'z_smoothing_window': 5,          # Frames for depth smoothing
     'depth_offset': 180,              # Pixel offset for depth sampling
 }
@@ -55,7 +55,7 @@ LOGIC_CONFIG = {
 # CONTROL SETTINGS
 # ============================================================================
 CONTROL_CONFIG = {
-    'default_speed': 150,           # PWM value (0-255)
+    'default_speed': 64,           # PWM value (0-255)
     'max_steering_angle': 30.0,    # degrees
     'arduino_port': '/dev/ttyACM0',
     'arduino_baud': 115200,
