@@ -3,6 +3,7 @@ import sys
 import time
 import logging
 from datetime import datetime
+from collections import deque
 
 # FIXED: Corrected import paths
 from perception.perception_module import PerceptionModule
@@ -29,13 +30,124 @@ shutdown_complete = False
 try:
     from config import CONTROL_CONFIG
 except ImportError:
-    LOGIC_CONFIG = {
+    CONTROL_CONFIG = {
         'default_speed': 40,  # PWM value (0-255)
         'max_steering_angle': 30,  # degrees
         'arduino_port': '/dev/ttyACM0',
         'arduino_baud': 115200,
         'command_delay': 0.01,
     }
+
+
+# ============================================================================
+# MODULE Hz PROFILING CLASSES
+# ============================================================================
+
+class ModuleTimer:
+    """Timer for individual module Hz performance tracking"""
+
+    def __init__(self, module_name, window_size=30):
+        self.module_name = module_name
+        self.window_size = window_size
+        self.execution_times = deque(maxlen=window_size)
+        self.start_time = None
+        self.total_calls = 0
+
+    def start(self):
+        self.start_time = time.time()
+
+    def stop(self):
+        if self.start_time is None:
+            return
+        execution_time = time.time() - self.start_time
+        self.execution_times.append(execution_time)
+        self.total_calls += 1
+        self.start_time = None
+        return execution_time
+
+    def get_stats(self):
+        if not self.execution_times:
+            return None
+        times = list(self.execution_times)
+        avg_time = sum(times) / len(times)
+        avg_hz = 1.0 / avg_time if avg_time > 0 else 0
+        return {
+            'module': self.module_name,
+            'avg_time_ms': avg_time * 1000,
+            'avg_hz': avg_hz,
+            'min_time_ms': min(times) * 1000,
+            'max_time_ms': max(times) * 1000,
+            'total_calls': self.total_calls
+        }
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+        return False
+
+
+class SystemProfiler:
+    """Profiles all modules - measures Hz performance"""
+
+    def __init__(self, window_size=30, log_interval=30):
+        self.timers = {}
+        self.window_size = window_size
+        self.log_interval = log_interval
+        self.system_start_time = time.time()
+        self.loop_count = 0
+
+    def get_timer(self, module_name):
+        if module_name not in self.timers:
+            self.timers[module_name] = ModuleTimer(module_name, self.window_size)
+        return self.timers[module_name]
+
+    def time_module(self, module_name):
+        return self.get_timer(module_name)
+
+    def log_stats(self, force=False):
+        self.loop_count += 1
+        if not force and self.loop_count % self.log_interval != 0:
+            return
+
+        logger.info("=" * 80)
+        logger.info(f"MODULE Hz PERFORMANCE REPORT (Loop #{self.loop_count})")
+        logger.info("=" * 80)
+
+        total_time = 0
+        all_stats = []
+
+        for module_name, timer in self.timers.items():
+            stats = timer.get_stats()
+            if stats:
+                all_stats.append(stats)
+                total_time += stats['avg_time_ms']
+
+        all_stats.sort(key=lambda x: x['avg_time_ms'], reverse=True)
+
+        for stats in all_stats:
+            logger.info(
+                f"{stats['module']:20s} | "
+                f"Avg: {stats['avg_time_ms']:6.2f}ms ({stats['avg_hz']:5.1f} Hz) | "
+                f"Min: {stats['min_time_ms']:6.2f}ms | "
+                f"Max: {stats['max_time_ms']:6.2f}ms | "
+                f"Calls: {stats['total_calls']:6d}"
+            )
+
+        logger.info("-" * 80)
+        if total_time > 0:
+            max_theoretical_hz = 1000.0 / total_time
+            logger.info(f"Total Module Time: {total_time:.2f}ms per loop")
+            logger.info(f"Max Theoretical System Hz: {max_theoretical_hz:.1f} Hz")
+
+        uptime = time.time() - self.system_start_time
+        logger.info(f"System Uptime: {uptime:.1f}s | Total Loops: {self.loop_count}")
+        logger.info("=" * 80)
+
+
+# ============================================================================
 
 
 class PerformanceMonitor:
@@ -157,6 +269,10 @@ def main():
     perf_monitor = PerformanceMonitor()
     safety_monitor = SafetyMonitor(max_steering=30.0)
 
+    # Initialize Hz profiler
+    profiler = SystemProfiler(window_size=30, log_interval=30)
+    logger.info("Module Hz profiler initialized")
+
     # Initialize modules with retry logic
     max_retries = 3
     for attempt in range(max_retries):
@@ -196,52 +312,66 @@ def main():
 
     # Main control loop
     try:
-        logger.info("Starting control loop...")
+        logger.info("Starting control loop with Hz profiling...")
         loop_count = 0
-        stats_interval = 15
+        stats_interval = 30
 
         while True:
             try:
-                # Perception
-                cones_world, img = perception.run()
+                # PERCEPTION MODULE - Timed
+                with profiler.time_module("Perception"):
+                    cones_world, img = perception.run()
 
                 # Safety check
                 if not safety_monitor.check_cone_detection(cones_world):
                     logger.warning("Extended cone detection failure - continuing with caution")
 
-                # Logic
-                blue, yellow = logic.cone_sorting(cones_world)
-                midpoints = logic.cone_midpoints(blue, yellow, img)
-                target = logic.Interpolation(midpoints)
+                # LOGIC MODULE - Timed with sub-components
+                with profiler.time_module("Logic_Sorting"):
+                    blue, yellow = logic.cone_sorting(cones_world)
+
+                with profiler.time_module("Logic_Midpoints"):
+                    midpoints = logic.cone_midpoints(blue, yellow, img)
+
+                with profiler.time_module("Logic_Interpolation"):
+                    target = logic.Interpolation(midpoints)
 
                 # Calculate control outputs
-                if target:
-                    angle = logic.steering_angle(target)
-                    angle = safety_monitor.check_steering(angle)
-                    speed = CONTROL_CONFIG['default_speed']
-                else:
-                    if loop_count % 10 == 0:
-                        logger.debug("No targets found")
-                    angle = 0
-                    speed = 0
+                angle = None
+                speed = 0
 
-                # Send to Arduino
-                arduino.send(angle, speed)
+                with profiler.time_module("Logic_Steering"):
+                    if target:
+                        angle = logic.steering_angle(target)
+                        angle = safety_monitor.check_steering(angle)
+                        speed = CONTROL_CONFIG['default_speed']
+                    else:
+                        if loop_count % 10 == 0:
+                            logger.debug("No targets found")
+                        angle = 0
+                        speed = 0
+
+                # MOTION CONTROL MODULE - Timed
+                with profiler.time_module("Arduino"):
+                    arduino.send(angle, speed)
 
                 # Performance monitoring
                 loop_time = perf_monitor.update()
                 loop_count += 1
 
-                # Periodic stats logging
+                # Log Hz profiler stats (every 30 loops by default)
+                profiler.log_stats()
+
+                # Periodic overall stats logging
                 if loop_count % stats_interval == 0:
                     stats = perf_monitor.get_stats()
                     if stats:
-                        logger.info(f"Performance: {stats['avg_fps']:.1f} FPS, "
-                                    f"Loop time: {stats['avg_loop_time'] * 1000:.1f}ms "
-                                    f"(min: {stats['min_loop_time'] * 1000:.1f}ms, "
-                                    f"max: {stats['max_loop_time'] * 1000:.1f}ms)")
-                        logger.info(f"Cones detected: {len(cones_world)}, "
-                                    f"Blue: {len(blue)}, Yellow: {len(yellow)}")
+                        logger.info("=" * 80)
+                        logger.info(f"OVERALL SYSTEM (Loop #{loop_count})")
+                        logger.info(f"System Hz: {stats['avg_fps']:.1f} Hz | "
+                                    f"Loop Time: {stats['avg_loop_time'] * 1000:.1f}ms | "
+                                    f"Cones: {len(cones_world)} (Blue: {len(blue)}, Yellow: {len(yellow)})")
+                        logger.info("=" * 80)
 
             except Exception as e:
                 logger.error(f"Error in control loop iteration: {e}")
@@ -259,6 +389,12 @@ def main():
         # Cleanup - FIXED: Only run once
         if not shutdown_complete:
             logger.info("Performing cleanup...")
+
+            # Log final Hz profiler stats
+            logger.info("\n" + "=" * 80)
+            logger.info("FINAL MODULE Hz PERFORMANCE SUMMARY")
+            logger.info("=" * 80)
+            profiler.log_stats(force=True)
 
             if arduino:
                 try:
@@ -281,7 +417,7 @@ def main():
             stats = perf_monitor.get_stats()
             if stats:
                 logger.info(f"Final statistics - Total loops: {loop_count}, "
-                            f"Average FPS: {stats['avg_fps']:.1f}")
+                            f"Average System Hz: {stats['avg_fps']:.1f}")
 
             logger.info("Shutdown complete.")
             shutdown_complete = True
