@@ -80,7 +80,7 @@ void loop() {
     // Python sends angle * 10 (e.g., -300 to 300)
     // Map -300/300 to servo 60/120
     if(raw_angle > 0) {raw_angle = raw_angle + 20;}
-    int servo_val = map(raw_angle, -235, 235, 28+20, 138-20);
+    int servo_val = map(raw_angle, -235, 235, 28, 138);
 
     steering.write(servo_val);
 
