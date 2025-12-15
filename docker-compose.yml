@@ -3,13 +3,44 @@ services:
   realsense:
     build: .
     container_name: p3-bil
+
+    runtime: nvidia
     privileged: true
+
     network_mode: "host"
+
+    ipc: host
+
+    shm_size: '2gb'
+
     environment:
-      - DISPLAY=$DISPLAY
-      - QT_X11_NO_MITSHM=1
+      # Display
+      #- DISPLAY=$DISPLAY
+      #- QT_X11_NO_MITSHM=1
+
+      # CUDA/GPU optimization
+      - CUDA_VISIBLE_DEVICES=0
+      - OPENBLAS_CORETYPE=ARMV8
+
+      # Python optimizations
+      - PYTHONUNBUFFERED=1
+      - OMP_NUM_THREADS=4
+      - OPENBLAS_NUM_THREADS=4
+
+      # Disable Python bytecode for faster startup
+      - PYTHONDONTWRITEBYTECODE=1
+
+    # Device access
     devices:
-      - "/dev/bus/usb:/dev/bus/usb"
+      - "/dev/bus/usb:/dev/bus/usb"        # USB devices (camera, Arduino)
+      - "/dev/video0:/dev/video0"          # Camera direct access (if needed)
+      - "/dev/ttyACM0:/dev/ttyACM0"        # Arduino direct access
+
+    # Volumes
     volumes:
       - .:/app
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
+
+    # Additional performance settings
+    security_opt:
+      - seccomp:unconfined  # Disable seccomp for maximum performance
