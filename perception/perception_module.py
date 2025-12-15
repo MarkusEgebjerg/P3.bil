@@ -11,7 +11,6 @@ try:
         COLOR_THRESHOLDS,
         PERCEPTION_CONFIG,
         MORPHOLOGY_CONFIG,
-        SPATIAL_FILTER
     )
 except ImportError:
     # Fallback to default values if config.py not found
@@ -32,10 +31,6 @@ except ImportError:
     MORPHOLOGY_CONFIG = {'kernel_size': (2, 3),
                          'erosion_iterations': 2,
                          'dilation_iterations': 10}
-    SPATIAL_FILTER = {'magnitude': 5,
-                      'smooth_alpha': 1,
-                      'smooth_delta': 50,
-                      'holes_fill': 0}
 
 logger = logging.getLogger(__name__)
 
@@ -96,10 +91,6 @@ class PerceptionModule:
         self.crop_top = CAMERA_CONFIG['crop_top_ratio']
         self.crop_bottom = CAMERA_CONFIG['crop_bottom_ratio']
 
-        # Spatial filter
-        self.spatial = rs.spatial_filter()
-        self.spatial_config = SPATIAL_FILTER
-
         # Z-smoothing
         self.z_window_size = PERCEPTION_CONFIG['z_smoothing_window']
         self.z_histories = {}
@@ -114,20 +105,6 @@ class PerceptionModule:
         if self.depth_intrin is None:
             self.depth_intrin = depth_frame.profile.as_video_stream_profile().get_intrinsics()
         return self.depth_intrin
-
-    def spatial_filter(self, depth_frame):
-        """Apply spatial filtering using config values"""
-        depth_frame = self.spatial.process(depth_frame)
-
-        self.spatial.set_option(rs.option.filter_magnitude, self.spatial_config['magnitude'])
-        self.spatial.set_option(rs.option.filter_smooth_alpha, self.spatial_config['smooth_alpha'])
-        self.spatial.set_option(rs.option.filter_smooth_delta, self.spatial_config['smooth_delta'])
-        depth_frame = self.spatial.process(depth_frame)
-
-        self.spatial.set_option(rs.option.holes_fill, self.spatial_config['holes_fill'])
-        depth_frame = self.spatial.process(depth_frame)
-
-        return depth_frame.as_depth_frame()
 
     def color_space_conversion(self, color_frame):
         """Convert to HSV and crop using config values"""
