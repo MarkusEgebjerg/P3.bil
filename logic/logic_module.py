@@ -104,8 +104,6 @@ class LogicModule:
         if not midpoints:
             return None
 
-
-        #mulig fejl i kode!!
         midpoints.sort(key=lambda m: m[1])
         xs = [m[0] for m in midpoints]
         zs = [m[1] + self.WD for m in midpoints] # apply width offset to z-values
@@ -117,7 +115,6 @@ class LogicModule:
             s = self.l / dist0
             return (s * x0, s * z0)
 
-        # need at least two points for quadratic solve
         if len(xs) < 2:
             return None
         x1, z1 = xs[1], zs[1]
@@ -143,16 +140,11 @@ class LogicModule:
         return (x0 + s*x1, z0 + s*z1)
 
     def steering_angle(self, target):
-        """
-        Calculate steering angle using pure pursuit algorithm.
-        Returns steering angle in degrees.
-        """
         if target is None:
             return None
 
         x, z = target
 
-        # Avoid division by zero
         if abs(x) < 1e-6:
             return 0.0
 

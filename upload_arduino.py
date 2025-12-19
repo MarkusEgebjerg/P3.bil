@@ -7,7 +7,6 @@ import hashlib
 
 
 def get_file_hash(filepath):
-    """Get MD5 hash of file to detect changes"""
     if not os.path.exists(filepath):
         return None
     with open(filepath, 'rb') as f:
@@ -15,7 +14,6 @@ def get_file_hash(filepath):
 
 
 def find_arduino_port():
-    """Find Arduino port automatically"""
     possible_ports = [
         '/dev/ttyACM0',
         '/dev/ttyACM1',
@@ -33,14 +31,6 @@ def find_arduino_port():
 
 
 def upload_arduino_sketch(sketch_path, port, board="arduino:avr:uno"):
-    """
-    Upload using arduino-cli
-    Args:
-        sketch_path: Path to .ino file
-        port: Serial port (e.g., /dev/ttyACM0)
-        board: Board type (default: Arduino Nano)
-    """
-
     print("\n" + "=" * 30)
     print("ARDUINO AUTO-UPLOAD")
     print("=" * 30)
@@ -59,7 +49,6 @@ def upload_arduino_sketch(sketch_path, port, board="arduino:avr:uno"):
             print("✗ Cannot proceed without Arduino connection")
             return False
 
-    # Check for hash file to avoid unnecessary uploads
     hash_file = "/tmp/arduino_sketch.hash"
     current_hash = get_file_hash(sketch_path)
 
@@ -149,7 +138,7 @@ def main():
     # Default values
     sketch_path = "/app/arduino/motorcontroller/motorcontroller.ino"
     port = None  # Auto-detect
-    board = "arduino:avr:uno"  # Change if using different board
+    board = "arduino:avr:uno"
 
     # Parse command line arguments
     if len(sys.argv) > 1:
@@ -166,7 +155,6 @@ def main():
         print("\n⚠ Upload failed, but continuing anyway...")
         print("You may need to upload manually using:")
         print(f"  arduino-cli upload --fqbn {board} --port {port} {sketch_path}")
-        # Don't exit with error - let main program run
 
     sys.exit(0)
 

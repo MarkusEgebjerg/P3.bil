@@ -10,8 +10,8 @@ CAMERA_CONFIG = {
     'resolution_x': 1280,
     'resolution_y': 720,
     'fps': 30,
-    'crop_top_ratio': 0.25,      # Crop top 25% of image
-    'crop_bottom_ratio': 0.75,   # Keep until 75% of image
+    'crop_top_ratio': 0.25,
+    'crop_bottom_ratio': 0.75,
 }
 
 # ============================================================================

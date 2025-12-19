@@ -4,7 +4,6 @@ import pyrealsense2 as rs
 import logging
 from datetime import datetime
 
-# Import config
 try:
     from config import (
         CAMERA_CONFIG,
@@ -13,7 +12,6 @@ try:
         MORPHOLOGY_CONFIG,
     )
 except ImportError:
-    # Fallback to default values if config.py not found
     CAMERA_CONFIG = {'resolution_x': 1280,
                      'resolution_y': 720,
                      'fps': 30,
@@ -36,12 +34,10 @@ logger = logging.getLogger(__name__)
 
 
 class PerceptionModule:
-    def __init__(self, record_video=False, output_path="/mnt/user-data/outputs"):
-        # --- RealSense Setup ---
+    def __init__(self):
         self.pipe = rs.pipeline()
         self.cfg = rs.config()
 
-        # Use config values
         self.res_x = CAMERA_CONFIG['resolution_x']
         self.res_y = CAMERA_CONFIG['resolution_y']
         self.fps = CAMERA_CONFIG['fps']
@@ -50,7 +46,6 @@ class PerceptionModule:
         self.cfg.enable_stream(rs.stream.depth, self.res_x, self.res_y, rs.format.z16, self.fps)
         self.align = rs.align(rs.stream.color)
 
-        # Start streaming
         logger.info("Starting RealSense camera...")
         try:
             self.stream = self.pipe.start(self.cfg)
@@ -58,7 +53,6 @@ class PerceptionModule:
             logger.error(f"Failed to start RealSense pipeline: {e}")
             raise
 
-        # --- Warm-up RealSense pipeline ---
         logger.info("Warming up camera...")
         for i in range(30):
             try:
@@ -70,13 +64,13 @@ class PerceptionModule:
         self.depth_scale = self.depth_sensor.get_depth_scale()
         self.depth_intrin = None
 
-        # --- Color Detection Settings from config ---
+        # Color Detection Settings from config
         self.lowerYellow = np.array(COLOR_THRESHOLDS['yellow_lower'])
         self.upperYellow = np.array(COLOR_THRESHOLDS['yellow_upper'])
         self.lowerBlue = np.array(COLOR_THRESHOLDS['blue_lower'])
         self.upperBlue = np.array(COLOR_THRESHOLDS['blue_upper'])
 
-        # --- Perception settings from config ---
+        # Perception settings from config 
         self.min_contour_area = PERCEPTION_CONFIG['min_contour_area']
         self.neighbor_distance = PERCEPTION_CONFIG['neighbor_distance']
         self.max_depth = PERCEPTION_CONFIG['max_depth']
@@ -107,7 +101,6 @@ class PerceptionModule:
         return self.depth_intrin
 
     def color_space_conversion(self, color_frame):
-        """Convert to HSV and crop using config values"""
         color_array = np.asanyarray(color_frame.get_data())
         res_y, res_x = color_array.shape[:2]
 
@@ -120,13 +113,11 @@ class PerceptionModule:
         return frame_HSV, color_array
 
     def mask_clean(self, mask):
-        """Clean mask using config morphology settings"""
         mask = cv2.erode(mask, self.kernel, iterations=self.erosion_iter)
         mask = cv2.dilate(mask, self.kernel, iterations=self.dilation_iter)
         return mask
 
     def color_detector(self, frame_HSV):
-        """Detect colors using config thresholds"""
         clean_mask_y = self.mask_clean(cv2.inRange(frame_HSV, self.lowerYellow, self.upperYellow))
         clean_mask_b = self.mask_clean(cv2.inRange(frame_HSV, self.lowerBlue, self.upperBlue))
         return clean_mask_y, clean_mask_b
@@ -137,7 +128,6 @@ class PerceptionModule:
         return contours_y, contours_b
 
     def find_centers(self, contours_y, contours_b, img):
-        """Find contour centers using bounding box method"""
         self.contour_centers = []
 
         for i in range(2):
@@ -163,7 +153,6 @@ class PerceptionModule:
         return self.contour_centers
 
     def contour_control(self, contour_centers, img):
-        """Filter contours to find cone tops using config neighbor distance"""
         self.cone_positions = []
 
         for i in range(len(contour_centers)):
@@ -189,7 +178,6 @@ class PerceptionModule:
         return self.cone_positions, img
 
     def world_positioning(self, cone_positions, depth_frame, depth_intrin, img):
-        """Convert pixel positions to 3D world coordinates"""
         world_cones = []
 
         for i in range(len(cone_positions)):
@@ -223,7 +211,6 @@ class PerceptionModule:
         return world_cones, img
 
     def run(self):
-        """Main perception pipeline"""
         depth_frame, color_frame = self.get_frame()
         if depth_frame is None:
             return [], None
@@ -239,7 +226,6 @@ class PerceptionModule:
         return world_pos, img
 
     def shutdown(self):
-        """Clean shutdown of camera"""
         logger.info("Shutting down perception module...")
 
         self.pipe.stop()

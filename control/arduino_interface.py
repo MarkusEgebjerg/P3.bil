@@ -37,7 +37,6 @@ class ArduinoInterface:
         self._connect()
 
     def _connect(self):
-        """Connect to Arduino with retry logic"""
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
@@ -61,7 +60,7 @@ class ArduinoInterface:
 
                 logger.info("Arduino connected and ready!")
 
-                # Send initial safe command
+                # Send setup safe command
                 self.send(0, 0)
                 return
 
@@ -78,11 +77,9 @@ class ArduinoInterface:
             return False
 
         try:
-            # Validate and clamp inputs
             steering = max(-self.max_steering, min(self.max_steering, steering))
             speed = max(0, min(255, int(speed)))
 
-            # Convert to protocol format
             steering_int = int(steering * 10)
 
             # Format message
@@ -94,7 +91,6 @@ class ArduinoInterface:
             self.last_command = (steering, speed)
 
             # Check for acknowledgment every 30 commands
-            # This prevents overwhelming the serial buffer
             if self.command_count % 30 == 0:
                 ack_received = False
                 check_start = time.time()
@@ -113,7 +109,6 @@ class ArduinoInterface:
                 if not ack_received:
                     self.ack_failures += 1
 
-                    # Log health check
                     if time.time() - self.last_ack_check > 5.0:
                         logger.info(f"Arduino health: {self.command_count} cmds, "
                                     f"{self.ack_failures} ack fails, "
@@ -126,7 +121,6 @@ class ArduinoInterface:
             self.error_count += 1
             logger.error(f"Serial error: {e}")
 
-            # Reconnect after multiple errors
             if self.error_count >= 5:
                 logger.warning("Multiple errors - attempting reconnection...")
                 self._reconnect()

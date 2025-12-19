@@ -4,12 +4,11 @@ import time
 import logging
 from datetime import datetime
 
-# FIXED: Corrected import paths
 from perception.perception_module import PerceptionModule
 from logic.logic_module import LogicModule
 from control.arduino_interface import ArduinoInterface
 
-# Configure logging
+# setup of looging settings
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -20,7 +19,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global variables for cleanup - FIXED: Added shutdown flags
 perception = None
 arduino = None
 logic = None
@@ -30,7 +28,7 @@ try:
     from config import CONTROL_CONFIG
 except ImportError:
     LOGIC_CONFIG = {
-        'default_speed': 40,  # PWM value (0-255)
+        'default_speed': 40,  # 0-255
         'max_steering_angle': 30,  # degrees
         'arduino_port': '/dev/ttyACM0',
         'arduino_baud': 115200,
@@ -71,9 +69,7 @@ class PerformanceMonitor:
 
 
 class SafetyMonitor:
-    """Monitor for safety violations and anomalies"""
-
-    def __init__(self, max_steering=30.0, no_cone_timeout=5.0):
+    def __init__(self, max_steering=23.5, no_cone_timeout=5.0):
         self.max_steering = max_steering
         self.no_cone_timeout = no_cone_timeout
         self.last_cone_time = time.time()
@@ -82,13 +78,11 @@ class SafetyMonitor:
         self.last_log_time = 0
 
     def check_steering(self, angle):
-        """Check if steering angle is within safe limits"""
         if angle is not None and abs(angle) > self.max_steering:
             return min(max(angle, -self.max_steering), self.max_steering)
         return angle
 
     def check_cone_detection(self, cones_detected):
-        """Monitor cone detection for potential issues"""
         if not cones_detected or len(cones_detected) == 0:
             self.consecutive_no_cones += 1
 
@@ -108,7 +102,7 @@ class SafetyMonitor:
 
 
 def signal_handler(sig, frame):
-    """Handle Ctrl+C and other termination signals"""
+    """Handle Ctrl+C"""
     global perception, arduino, logic, shutdown_complete
 
     if shutdown_complete:
@@ -225,10 +219,8 @@ def main():
                     angle = 0
                     speed = 0
 
-                # Send to Arduino
                 arduino.send(angle, speed)
 
-                # Performance monitoring
                 loop_time = perf_monitor.update()
                 loop_count += 1
 
@@ -277,7 +269,6 @@ def main():
                 except Exception as e:
                     logger.error(f"Error during camera cleanup: {e}")
 
-            # Final stats
             stats = perf_monitor.get_stats()
             if stats:
                 logger.info(f"Final statistics - Total loops: {loop_count}, "
